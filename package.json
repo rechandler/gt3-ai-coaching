@@ -1,0 +1,88 @@
+{
+  "name": "gt3-ai-coaching",
+  "version": "1.0.0",
+  "description": "Professional AI coaching overlay for iRacing GT3 cars",
+  "main": "src/main.js",
+  "homepage": "https://github.com/rechandler/gt3-ai-coaching",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rechandler/gt3-ai-coaching.git"
+  },
+  "author": "rechandler",
+  "license": "MIT",
+  "keywords": [
+    "iracing",
+    "gt3",
+    "racing",
+    "ai",
+    "coaching",
+    "telemetry",
+    "overlay"
+  ],
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "server": "node src/telemetry-server.js",
+    "dev": "concurrently \"npm run server\" \"npm start\" \"wait-on http://localhost:3000 && electron .\"",
+    "build-installer": "npm run build && electron-builder --win --x64 --publish=never",
+    "build-all": "npm run build && electron-builder --win --mac --linux",
+    "postinstall": "electron-builder install-app-deps",
+    "setup": "node scripts/dev-setup.js"
+  },
+  "build": {
+    "appId": "com.rechandler.gt3coaching",
+    "productName": "GT3 AI Coaching",
+    "copyright": "Copyright © 2024 rechandler",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "build/**/*",
+      "src/main.js",
+      "src/preload.js",
+      "src/telemetry-server.js",
+      "node_modules/**/*",
+      "!node_modules/.cache"
+    ],
+    "win": {
+      "target": "nsis",
+      "requestedExecutionLevel": "requireAdministrator",
+      "publisherName": "rechandler"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "GT3 AI Coaching"
+    }
+  },
+  "dependencies": {
+    "node-irsdk": "^2.1.9",
+    "ws": "^8.14.2",
+    "electron": "^27.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "recharts": "^2.8.0",
+    "lucide-react": "^0.263.1",
+    "electron-updater": "^6.1.4"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "wait-on": "^7.0.1",
+    "electron-builder": "^24.6.4"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version"
+    ]
+  }
+}

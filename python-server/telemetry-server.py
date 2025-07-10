@@ -12,6 +12,9 @@ from websockets.server import serve
 import time
 from typing import Dict, Any, Optional
 
+# Import our local AI coach
+from ai_coach import LocalAICoach
+
 # Try different iRacing SDK imports
 try:
     import pyirsdk as irsdk
@@ -27,9 +30,48 @@ except ImportError:
         print("  pip install git+https://github.com/kutu/pyirsdk.git")
         exit(1)
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Configure logging with rotation to prevent memory issues
+import logging.handlers
+import os
+
+# Create logs directory if it doesn't exist
+logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
+os.makedirs(logs_dir, exist_ok=True)
+
+# Set logging level based on environment
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
+if LOG_LEVEL not in ['DEBUG', 'INFO', 'WARNING', 'ERROR']:
+    LOG_LEVEL = 'INFO'
+
+# Configure logger with rotation
 logger = logging.getLogger(__name__)
+logger.setLevel(getattr(logging, LOG_LEVEL))
+
+# Create rotating file handler (10MB max, keep 5 files)
+file_handler = logging.handlers.RotatingFileHandler(
+    os.path.join(logs_dir, 'telemetry-server.log'),
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5
+)
+file_handler.setLevel(getattr(logging, LOG_LEVEL))
+
+# Create console handler for immediate feedback
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)  # Always show INFO+ on console
+
+# Create formatters
+detailed_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s')
+console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+file_handler.setFormatter(detailed_formatter)
+console_handler.setFormatter(console_formatter)
+
+# Add handlers to logger
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# Prevent duplicate logs
+logger.propagate = False
 
 class GT3TelemetryServer:
     def __init__(self, host: str = "localhost", port: int = 8081):
@@ -40,9 +82,22 @@ class GT3TelemetryServer:
         self.last_telemetry = {}
         self.last_session_info = {}
         
+        # Initialize AI Coach
+        self.ai_coach = LocalAICoach()
+        
         # Initialize iRacing SDK
         self.ir = irsdk.IRSDK()
         logger.info(f"Using {SDK_TYPE} for iRacing SDK")
+        
+        # Start the SDK immediately
+        try:
+            if hasattr(self.ir, 'startup'):
+                startup_result = self.ir.startup()
+                logger.info(f"SDK startup result: {startup_result}")
+            else:
+                logger.info("No startup method available - SDK may auto-initialize")
+        except Exception as e:
+            logger.warning(f"SDK startup failed: {e}")
         
         # Track what methods/attributes are available
         self.available_methods = {}
@@ -70,14 +125,15 @@ class GT3TelemetryServer:
         
     async def handle_client(self, websocket, path):
         """Handle new WebSocket client connections"""
-        logger.info(f"GT3 AI Coaching client connected from {websocket.remote_address}")
-        self.connected_clients.add(websocket)
-        
         try:
+            logger.info(f"GT3 AI Coaching client connected from {websocket.remote_address}")
+            self.connected_clients.add(websocket)
+            
             # Send initial connection message
             await websocket.send(json.dumps({
                 "type": "Connected",
-                "message": "Connected to GT3 Python Telemetry Server"
+                "message": "Connected to GT3 Python Telemetry Server",
+                "isConnected": self.is_connected_to_iracing
             }))
             
             # Keep the connection alive
@@ -89,7 +145,11 @@ class GT3TelemetryServer:
                     logger.warning(f"Invalid JSON received: {message}")
                     
         except websockets.exceptions.ConnectionClosed:
-            logger.info("GT3 AI Coaching client disconnected")
+            logger.debug("GT3 AI Coaching client disconnected normally")
+        except EOFError:
+            logger.debug("Client connection closed unexpectedly (EOFError)")
+        except Exception as e:
+            logger.debug(f"Client connection error: {e}")
         finally:
             self.connected_clients.discard(websocket)
     
@@ -121,7 +181,8 @@ class GT3TelemetryServer:
         for client in self.connected_clients:
             try:
                 await client.send(message_json)
-            except websockets.exceptions.ConnectionClosed:
+            except (websockets.exceptions.ConnectionClosed, EOFError, Exception) as e:
+                logger.debug(f"Removing disconnected client: {e}")
                 disconnected_clients.add(client)
         
         # Remove disconnected clients
@@ -138,11 +199,23 @@ class GT3TelemetryServer:
             
             # Check connection - try different methods
             if self.available_methods.get('is_connected', {}).get('exists'):
-                connected = getattr(self.ir, 'is_connected', False)
-                if self.available_methods.get('is_initialized', {}).get('exists'):
-                    initialized = getattr(self.ir, 'is_initialized', False)
-                    return connected and initialized
-                return connected
+                try:
+                    # Check if methods are callable or properties
+                    if self.available_methods.get('is_connected', {}).get('callable'):
+                        connected = self.ir.is_connected()
+                    else:
+                        connected = self.ir.is_connected
+                        
+                    if self.available_methods.get('is_initialized', {}).get('exists'):
+                        if self.available_methods.get('is_initialized', {}).get('callable'):
+                            initialized = self.ir.is_initialized()
+                        else:
+                            initialized = self.ir.is_initialized
+                        return connected and initialized
+                    return connected
+                except Exception as e:
+                    logger.debug(f"Error calling connection methods: {e}")
+                    return False
             else:
                 # Test connection by trying to get some data
                 try:
@@ -156,19 +229,72 @@ class GT3TelemetryServer:
             return False
     
     def get_session_info(self) -> Optional[Dict[str, Any]]:
-        """Get session information - simplified version"""
+        """Get session information - extract real data when possible"""
         try:
-            # Skip session info for now if it's causing issues
-            # Focus on telemetry data which is more important for GT3 coaching
-            logger.debug("Skipping session info to avoid API compatibility issues")
+            # Try multiple methods to get session info
+            session_info_raw = None
             
-            # Create minimal session info
+            # Method 1: Direct session_info attribute
+            if self.available_methods.get('session_info', {}).get('exists'):
+                try:
+                    session_info_raw = getattr(self.ir, 'session_info', None)
+                    if session_info_raw:
+                        logger.debug(f"Got session info via method 1: {type(session_info_raw)}")
+                except Exception as e:
+                    logger.debug(f"Method 1 failed: {e}")
+            
+            # Method 2: get_session_info method  
+            if not session_info_raw and self.available_methods.get('get_session_info', {}).get('callable'):
+                try:
+                    session_info_raw = self.ir.get_session_info()
+                    if session_info_raw:
+                        logger.debug(f"Got session info via method 2: {type(session_info_raw)}")
+                except Exception as e:
+                    logger.debug(f"Method 2 failed: {e}")
+            
+            # Method 3: Try session_info_update approach
+            if not session_info_raw and hasattr(self.ir, 'get_session_info_update_by_key'):
+                try:
+                    # Try to get each section separately
+                    for section in ['DriverInfo', 'WeekendInfo', 'SessionInfo']:
+                        section_data = self.ir.get_session_info_update_by_key(section)
+                        if section_data:
+                            logger.debug(f"Got {section} via method 3: {type(section_data)}")
+                            # If we get any section, we can build from there
+                            if not session_info_raw:
+                                session_info_raw = {}
+                            session_info_raw[section] = section_data
+                except Exception as e:
+                    logger.debug(f"Method 3 failed: {e}")
+            
+            # Parse session info if we have it as a string (YAML format)
+            if session_info_raw and isinstance(session_info_raw, str):
+                try:
+                    import yaml
+                    session_info_raw = yaml.safe_load(session_info_raw)
+                    logger.debug("Successfully parsed session info YAML")
+                except ImportError:
+                    logger.debug("PyYAML not available, trying JSON parse")
+                    try:
+                        import json
+                        session_info_raw = json.loads(session_info_raw)
+                        logger.debug("Successfully parsed session info JSON")
+                    except:
+                        logger.debug("Could not parse session info as JSON or YAML")
+                        session_info_raw = None
+                except Exception as e:
+                    logger.debug(f"Could not parse session info string: {e}")
+                    session_info_raw = None
+            
+            # Create comprehensive session info structure
             basic_session_info = {
                 'WeekendInfo': {
                     'TrackDisplayName': 'iRacing Track',
                     'TrackConfigName': '',
                     'TrackID': 0,
-                    'TrackLength': '0.00 km'
+                    'TrackLength': '0.00 km',
+                    'TrackCity': 'Unknown',
+                    'TrackCountry': 'Unknown'
                 },
                 'DriverInfo': {
                     'DriverCarIdx': 0,
@@ -176,7 +302,8 @@ class GT3TelemetryServer:
                         'CarIdx': 0,
                         'CarScreenName': 'GT3 Car',
                         'CarPath': 'gt3',
-                        'CarID': 0
+                        'CarID': 0,
+                        'CarClassShortName': 'GT3'
                     }]
                 },
                 'SessionInfo': {
@@ -187,11 +314,70 @@ class GT3TelemetryServer:
                 }
             }
             
+            # If we have real session info, merge it with our structure
+            if session_info_raw and isinstance(session_info_raw, dict):
+                try:
+                    # Update with real data if available
+                    if 'WeekendInfo' in session_info_raw:
+                        basic_session_info['WeekendInfo'].update(session_info_raw['WeekendInfo'])
+                        logger.debug(f"Updated WeekendInfo from session data")
+                    if 'DriverInfo' in session_info_raw:
+                        basic_session_info['DriverInfo'].update(session_info_raw['DriverInfo'])
+                        logger.debug(f"Updated DriverInfo from session data")
+                    if 'SessionInfo' in session_info_raw:
+                        basic_session_info['SessionInfo'].update(session_info_raw['SessionInfo'])
+                        logger.debug(f"Updated SessionInfo from session data")
+                except Exception as e:
+                    logger.debug(f"Could not merge session info: {e}")
+            else:
+                logger.debug("No valid session info found, using enhanced defaults")
+            
+            # Enhance defaults with telemetry data if available
+            try:
+                player_car_class = self.safe_get_telemetry('PlayerCarClass')
+                if player_car_class is not None:
+                    # Update car info based on telemetry
+                    drivers = basic_session_info['DriverInfo']['Drivers']
+                    if drivers and len(drivers) > 0:
+                        if drivers[0]['CarScreenName'] == 'GT3 Car':
+                            # Enhance with class-specific names
+                            class_names = {
+                                0: 'GT3 Class Car',
+                                1: 'GTE Class Car', 
+                                2: 'LMP2 Class Car',
+                                3: 'LMP1 Class Car',
+                                4: 'Formula Class Car'
+                            }
+                            drivers[0]['CarScreenName'] = class_names.get(player_car_class, f'Class {player_car_class} Car')
+                            drivers[0]['CarClassShortName'] = f'Class {player_car_class}'
+                            
+                track_temp = self.safe_get_telemetry('TrackTemp')
+                if track_temp is not None:
+                    # Enhance track info based on temperature
+                    if basic_session_info['WeekendInfo']['TrackDisplayName'] == 'iRacing Track':
+                        if track_temp > 35:
+                            basic_session_info['WeekendInfo']['TrackDisplayName'] = 'Hot Climate Track'
+                            basic_session_info['WeekendInfo']['TrackCountry'] = 'Warm Region'
+                        elif track_temp < 15:
+                            basic_session_info['WeekendInfo']['TrackDisplayName'] = 'Cold Climate Track'
+                            basic_session_info['WeekendInfo']['TrackCountry'] = 'Cool Region'
+                        else:
+                            basic_session_info['WeekendInfo']['TrackDisplayName'] = 'Temperate Climate Track'
+                            basic_session_info['WeekendInfo']['TrackCountry'] = 'Moderate Region'
+                            
+            except Exception as e:
+                logger.debug(f"Could not enhance session info with telemetry: {e}")
+            
             return basic_session_info
             
         except Exception as e:
             logger.warning(f"Session info unavailable: {e}")
-            return None
+            # Return minimal fallback structure
+            return {
+                'WeekendInfo': {'TrackDisplayName': 'iRacing Track', 'TrackConfigName': ''},
+                'DriverInfo': {'Drivers': [{'CarScreenName': 'Race Car', 'CarIdx': 0}]},
+                'SessionInfo': {'Sessions': [{'SessionName': 'Practice'}]}
+            }
     
     def safe_get_telemetry(self, key: str):
         """Safely get telemetry value"""
@@ -207,22 +393,55 @@ class GT3TelemetryServer:
     def check_connection_status(self) -> bool:
         """Check if still connected to iRacing"""
         try:
-            # Method 1: Check status attributes
-            if self.available_methods.get('is_connected', {}).get('exists'):
-                connected = getattr(self.ir, 'is_connected', False)
-                if self.available_methods.get('is_initialized', {}).get('exists'):
-                    initialized = getattr(self.ir, 'is_initialized', False)
-                    return bool(connected and initialized)
-                return bool(connected)
+            # First, ensure SDK is started
+            if hasattr(self.ir, 'startup') and hasattr(self.ir, 'is_initialized'):
+                try:
+                    # Check if is_initialized is callable or a property
+                    if self.available_methods.get('is_initialized', {}).get('callable'):
+                        initialized = self.ir.is_initialized()
+                    else:
+                        initialized = self.ir.is_initialized
+                        
+                    if not initialized:
+                        logger.debug("SDK not initialized, attempting startup...")
+                        startup_result = self.ir.startup()
+                        if not startup_result:
+                            logger.debug("SDK startup failed")
+                            return False
+                except Exception as e:
+                    logger.debug(f"Error checking initialization: {e}")
+                    return False
             
-            # Method 2: Test by getting data
+            # Check connection status
+            if hasattr(self.ir, 'is_connected') and hasattr(self.ir, 'is_initialized'):
+                try:
+                    # Check if methods are callable or properties
+                    if self.available_methods.get('is_connected', {}).get('callable'):
+                        connected = self.ir.is_connected()
+                    else:
+                        connected = self.ir.is_connected
+                        
+                    if self.available_methods.get('is_initialized', {}).get('callable'):
+                        initialized = self.ir.is_initialized()
+                    else:
+                        initialized = self.ir.is_initialized
+                        
+                    logger.debug(f"Connection status: connected={connected}, initialized={initialized}")
+                    return connected and initialized
+                except Exception as e:
+                    logger.debug(f"Error calling connection methods: {e}")
+            
+            # Fallback: Test by getting data
             test_data = self.safe_get_telemetry('SessionTime')
-            return test_data is not None
+            is_connected = test_data is not None
+            logger.debug(f"Connection test via telemetry: {is_connected} (SessionTime: {test_data})")
+            return is_connected
             
         except Exception as e:
             logger.debug(f"Connection check failed: {e}")
             return False
     
+
     def get_telemetry_data(self) -> Optional[Dict[str, Any]]:
         """Get telemetry data - focus on core GT3 coaching data"""
         try:
@@ -232,154 +451,494 @@ class GT3TelemetryServer:
             # Core telemetry fields for GT3 coaching
             telemetry_fields = {
                 # Session data
-                'SessionTime': 'SessionTime',
-                'SessionTick': 'SessionTick', 
-                'SessionFlags': 'SessionFlags',
-                'PaceFlags': 'PaceFlags',
+                'sessionTime': 'SessionTime',
+                'sessionTick': 'SessionTick', 
+                'sessionFlags': 'SessionFlags',
+                'paceFlags': 'PaceFlags',
                 
                 # Car performance
-                'Speed': 'Speed',
-                'RPM': 'RPM', 
-                'Gear': 'Gear',
-                'Throttle': 'Throttle',
-                'Brake': 'Brake',
-                'Steering': 'Steering',
+                'speed': 'Speed',
+                'rpm': 'RPM', 
+                'gear': 'Gear',
+                'throttle': 'Throttle',
+                'brake': 'Brake',
+                'steering': 'SteeringWheelAngle',
                 
                 # Lap timing
-                'LapCurrentLapTime': 'LapCurrentLapTime',
-                'LapLastLapTime': 'LapLastLapTime',
-                'LapBestLapTime': 'LapBestLapTime',
-                'LapDistPct': 'LapDistPct',
+                'lapCurrentLapTime': 'LapCurrentLapTime',
+                'lapLastLapTime': 'LapLastLapTime',
+                'lapBestLapTime': 'LapBestLapTime',
+                'lapDistPct': 'LapDistPct',
+                'lap': 'Lap',
+                
+                # Position and race data
+                'position': 'Position',
+                'classPosition': 'ClassPosition',
                 
                 # Environmental
-                'TrackTempCrew': 'TrackTempCrew',
-                'AirTemp': 'AirTemp',
-                'WeatherType': 'WeatherType',
+                'trackTempCrew': 'TrackTempCrew',
+                'airTemp': 'AirTemp',
+                'weatherType': 'WeatherType',
                 
-                # Fuel
-                'FuelLevel': 'FuelLevel',
-                'FuelLevelPct': 'FuelLevelPct',
-                'FuelUsePerHour': 'FuelUsePerHour',
+                # Fuel (converted from liters to gallons for US display)
+                'fuelLevel': 'FuelLevel',
+                'fuelLevelPct': 'FuelLevelPct',
+                'fuelUsePerHour': 'FuelUsePerHour',
+                
+                # Pit and track status
+                'onPitRoad': 'OnPitRoad',
             }
             
             # Get basic telemetry
             for field_name, irsdk_key in telemetry_fields.items():
                 value = self.safe_get_telemetry(irsdk_key)
                 if value is not None:
+                    # Convert speed from m/s to MPH
+                    if field_name == 'speed':
+                        value = value * 2.23694  # Convert m/s to MPH
+                    # Convert throttle and brake from 0-1 to 0-100 percentage
+                    elif field_name in ['throttle', 'brake']:
+                        value = value * 100  # Convert to percentage
+                    # Convert fuel from liters to gallons (iRacing uses liters internally)
+                    elif field_name in ['fuelLevel', 'fuelUsePerHour']:
+                        value = value * 0.264172  # Convert liters to US gallons
+                    # fuelLevelPct is already a percentage (0-1), keep as-is
                     telemetry[field_name] = value
                     data_count += 1
             
-            # Get tire temperatures (GT3 critical)
-            tire_temps = {}
-            for corner in ['LF', 'RF', 'LR', 'RR']:
-                for zone in ['TempCL', 'TempCM', 'TempCR']:
-                    key = f'{corner}{zone}'
-                    temp = self.safe_get_telemetry(key)
-                    if temp is not None:
-                        tire_temps[key] = temp
-                        data_count += 1
+            # Calculate delta time (current lap vs best lap) - but not in pits
+            current_lap_time = self.safe_get_telemetry('LapCurrentLapTime')
+            best_lap_time = self.safe_get_telemetry('LapBestLapTime')
+            on_pit_road = self.safe_get_telemetry('OnPitRoad')
+            in_pit_stall = self.safe_get_telemetry('CarIdxOnPitRoad')  # Alternative pit detection
             
-            if tire_temps:
-                telemetry['TireTemps'] = tire_temps
+            # Only calculate delta if not in pits and have valid lap times
+            if (current_lap_time is not None and best_lap_time is not None and best_lap_time > 0 
+                and not on_pit_road and (in_pit_stall is None or not in_pit_stall)):
+                telemetry['deltaTime'] = current_lap_time - best_lap_time
+                data_count += 1
+            else:
+                # In pits or invalid lap time - don't show delta
+                telemetry['deltaTime'] = None
+                if on_pit_road:
+                    logger.debug("In pits - delta time disabled")
+                data_count += 1
+            
+            # Get car and track information - improved fallback system
+            car_name = "Unknown Car"
+            track_name = "Unknown Track"
+            
+            # First, try to get car/track info from telemetry data directly
+            try:
+                # Try to get car name from telemetry
+                car_screen_name = self.safe_get_telemetry('CarScreenName')
+                if car_screen_name:
+                    car_name = car_screen_name
+                    logger.info(f"✅ Car name from telemetry: {car_name}")
+                else:
+                    # Try alternative car name fields
+                    car_screen_name_short = self.safe_get_telemetry('CarScreenNameShort')
+                    if car_screen_name_short:
+                        car_name = car_screen_name_short
+                        logger.info(f"✅ Car name from telemetry (short): {car_name}")
+                
+                # Try to get track name from telemetry
+                track_display_name = self.safe_get_telemetry('TrackDisplayName')
+                track_config_name = self.safe_get_telemetry('TrackConfigName')
+                if track_display_name:
+                    track_name = track_display_name
+                    if track_config_name:
+                        track_name += f" - {track_config_name}"
+                    logger.info(f"✅ Track name from telemetry: {track_name}")
+                else:
+                    # Try alternative track name fields
+                    track_name_short = self.safe_get_telemetry('TrackDisplayNameShort')
+                    if track_name_short:
+                        track_name = track_name_short
+                        logger.info(f"✅ Track name from telemetry (short): {track_name}")
+                        
+            except Exception as e:
+                logger.debug(f"Could not get car/track from telemetry: {e}")
+            
+            # Fallback to session info if telemetry didn't provide car/track info
+            if (car_name == "Unknown Car" or track_name == "Unknown Track") and self.last_session_info:
+                try:
+                    # Extract car name from session info
+                    if car_name == "Unknown Car":
+                        driver_info = self.last_session_info.get('DriverInfo', {})
+                        drivers = driver_info.get('Drivers', [])
+                        if drivers and len(drivers) > 0:
+                            session_car_name = drivers[0].get('CarScreenName', '')
+                            if session_car_name and session_car_name != 'GT3 Car':
+                                car_name = session_car_name
+                                logger.debug(f"Car name from session info: {car_name}")
+                    
+                    # Extract track name from session info
+                    if track_name == "Unknown Track":
+                        weekend_info = self.last_session_info.get('WeekendInfo', {})
+                        track_display_name = weekend_info.get('TrackDisplayName', '')
+                        track_config_name = weekend_info.get('TrackConfigName', '')
+                        if track_display_name and track_display_name != 'iRacing Track':
+                            track_name = f"{track_display_name}"
+                            if track_config_name:
+                                track_name += f" - {track_config_name}"
+                            logger.debug(f"Track name from session info: {track_name}")
+                except Exception as e:
+                    logger.debug(f"Could not extract car/track info from session: {e}")
+            
+            # Enhanced fallback system using telemetry data patterns
+            if car_name == "Unknown Car":
+                try:
+                    player_car_class = self.safe_get_telemetry('PlayerCarClass')
+                    if player_car_class is not None:
+                        # Car class mapping for common iRacing classes
+                        car_class_names = {
+                            0: "GT3 Car",  # Common GT3 class
+                            1: "GTE Car",
+                            2: "LMP2 Car", 
+                            3: "LMP1 Car",
+                            4: "Formula Car",
+                            5: "Stock Car",
+                            6: "Touring Car",
+                            7: "Sports Car",
+                            8: "Prototype Car"
+                        }
+                        car_name = car_class_names.get(player_car_class, f"Car Class {player_car_class}")
+                        logger.info(f"🔄 Using car class fallback: {car_name}")
+                        
+                        # For GT3 class, try to be more specific based on telemetry signature
+                        if player_car_class == 0:  # GT3 class
+                            rpm = self.safe_get_telemetry('RPM')
+                            max_gear = self.safe_get_telemetry('Gear')
+                            if rpm and max_gear:
+                                # Simple heuristics based on common GT3 cars
+                                if rpm > 8000:
+                                    car_name = "Ferrari 488 GT3 (estimated)"
+                                elif rpm > 7500:
+                                    car_name = "Porsche 911 GT3 R (estimated)"
+                                elif rpm > 7000:
+                                    car_name = "Mercedes AMG GT3 (estimated)"
+                                else:
+                                    car_name = "BMW M4 GT3 (estimated)"
+                                logger.info(f"🎯 GT3 car estimation: {car_name}")
+                except Exception as e:
+                    logger.debug(f"Could not determine car from class: {e}")
+            
+            # Enhanced track fallback using track characteristics
+            if track_name == "Unknown Track":
+                try:
+                    track_temp = self.safe_get_telemetry('TrackTemp')
+                    track_surface = self.safe_get_telemetry('PlayerTrackSurface')
+                    track_wetness = self.safe_get_telemetry('TrackWetness')
+                    
+                    if track_temp is not None:
+                        if track_temp > 40:
+                            track_name = "Road Course (Hot Climate)"
+                        elif track_temp < 15:
+                            track_name = "Road Course (Cold Climate)"
+                        else:
+                            track_name = "Road Course"
+                        
+                        if track_wetness and track_wetness == 2:
+                            track_name += " (Wet)"
+                        elif track_wetness and track_wetness == 3:
+                            track_name += " (Very Wet)"
+                        
+                        logger.info(f"🌍 Track estimation based on conditions: {track_name}")
+                except Exception as e:
+                    logger.debug(f"Could not estimate track: {e}")
+            
+            telemetry['carName'] = car_name
+            telemetry['trackName'] = track_name
+            
+            # Get AI coaching recommendations
+            try:
+                coaching_messages = self.ai_coach.process_telemetry(telemetry)
+                
+                if coaching_messages:
+                    # Use the highest priority message as primary
+                    primary_message = coaching_messages[0]
+                    telemetry['coachingMessage'] = primary_message.message
+                    telemetry['coachingPriority'] = primary_message.priority
+                    telemetry['coachingCategory'] = primary_message.category
+                    telemetry['coachingConfidence'] = int(primary_message.confidence)
+                    
+                    # Add secondary messages
+                    secondary_messages = []
+                    for msg in coaching_messages[1:]:
+                        secondary_messages.append({
+                            'message': msg.message,
+                            'category': msg.category,
+                            'priority': msg.priority,
+                            'confidence': int(msg.confidence)
+                        })
+                    telemetry['secondaryMessages'] = secondary_messages
+                    
+                    # Add improvement potential if available
+                    if hasattr(primary_message, 'improvement_potential') and primary_message.improvement_potential > 0:
+                        telemetry['improvementPotential'] = primary_message.improvement_potential
+                        
+                else:
+                    # Default when no specific coaching available
+                    telemetry['coachingMessage'] = "Analyzing your driving - keep it smooth!"
+                    telemetry['coachingPriority'] = 3
+                    telemetry['coachingCategory'] = "general"
+                    telemetry['coachingConfidence'] = 70
+                    telemetry['secondaryMessages'] = []
+                    
+            except Exception as e:
+                logger.error(f"AI coaching error: {e}")
+                telemetry['coachingMessage'] = "AI Coach temporarily offline"
+                telemetry['coachingPriority'] = 1
+                telemetry['coachingCategory'] = "general"
+                telemetry['coachingConfidence'] = 100
+                telemetry['secondaryMessages'] = []
+            
+            # Add enhanced user profile with AI insights
+            try:
+                session_summary = self.ai_coach.get_session_summary()
+                telemetry['userProfile'] = {
+                    'experienceLevel': 'learning',  # AI will adapt this
+                    'sessionsCompleted': session_summary.get('laps_completed', 0),
+                    'consistency': max(0, min(100, int((1 - session_summary.get('consistency', 0.1)) * 100))),
+                    'bestLapTime': session_summary.get('best_lap_time'),
+                    'improvementTrend': 'improving' if session_summary.get('improvement', 0) > 0 else 'stable',
+                    'aiStatus': 'active' if session_summary.get('baseline_established', False) else 'learning'
+                }
+            except Exception as e:
+                logger.debug(f"Error updating user profile: {e}")
+                telemetry['userProfile'] = {
+                    'experienceLevel': 'intermediate',
+                    'sessionsCompleted': 0,
+                    'consistency': 85,
+                    'aiStatus': 'initializing'
+                }
+            tire_temp_mapping = {
+                'tireTempLF': 'LFTempCM',
+                'tireTempRF': 'RFTempCM', 
+                'tireTempLR': 'LRTempCM',
+                'tireTempRR': 'RRTempCM'
+            }
+            
+            tire_data_found = False
+            logger.debug("Checking for tire temperature data...")
+            for display_name, irsdk_key in tire_temp_mapping.items():
+                temp = self.safe_get_telemetry(irsdk_key)
+                logger.debug(f"Tire temp {irsdk_key}: {temp}")
+                if temp is not None:
+                    # Test both interpretations
+                    temp_as_celsius = (temp * 9/5) + 32  # Assume Celsius, convert to F
+                    temp_as_fahrenheit = temp  # Assume already Fahrenheit
+                    
+                    logger.info(f"🔍 {irsdk_key} raw value: {temp}")
+                    logger.info(f"🔍 If Celsius: {temp}°C = {temp_as_celsius:.1f}°F")
+                    logger.info(f"🔍 If Fahrenheit: {temp_as_fahrenheit:.1f}°F")
+                    
+                    # For now, let's assume it's already Fahrenheit if the value looks reasonable
+                    if 50 <= temp <= 300:  # Reasonable Fahrenheit range for tires
+                        temp_fahrenheit = temp  # Use as-is (assume Fahrenheit)
+                        logger.info(f"✅ Using as Fahrenheit: {display_name} = {temp_fahrenheit:.1f}°F")
+                    else:
+                        # Convert from Celsius to Fahrenheit
+                        temp_fahrenheit = (temp * 9/5) + 32
+                        logger.info(f"✅ Converting from Celsius: {display_name} = {temp:.1f}°C = {temp_fahrenheit:.1f}°F")
+                    
+                    # Only use temperatures that seem reasonable (above 32°F, below 500°F)
+                    if 32 <= temp_fahrenheit <= 500:
+                        telemetry[display_name] = temp_fahrenheit
+                        data_count += 1
+                        tire_data_found = True
+                    else:
+                        logger.debug(f"⚠️ Rejected unreasonable temp {display_name}: {temp_fahrenheit:.1f}°F")
+                    
+            # If center temps aren't available, try other tire temp fields
+            if not tire_data_found:
+                logger.debug("Primary tire temps not found, trying alternates...")
+                alternate_tire_mapping = {
+                    'tireTempLF': ['LFTempCL', 'LFTempCR', 'LFTempC'],
+                    'tireTempRF': ['RFTempCL', 'RFTempCR', 'RFTempC'], 
+                    'tireTempLR': ['LRTempCL', 'LRTempCR', 'LRTempC'],
+                    'tireTempRR': ['RRTempCL', 'RRTempCR', 'RRTempC']
+                }
+                
+                for display_name, alt_keys in alternate_tire_mapping.items():
+                    for alt_key in alt_keys:
+                        temp = self.safe_get_telemetry(alt_key)
+                        logger.debug(f"Alternate tire temp {alt_key}: {temp}")
+                        if temp is not None and temp > 0:  # Only use valid temperatures > 0
+                            temp_fahrenheit = (temp * 9/5) + 32
+                            telemetry[display_name] = temp_fahrenheit
+                            data_count += 1
+                            logger.info(f"Using alternate tire temp field {alt_key} for {display_name}: {temp_fahrenheit:.1f}°F")
+                            break
+                            
+            # If still no tire data and the car is stationary, provide ambient temps as placeholders
+            if not tire_data_found:
+                air_temp = self.safe_get_telemetry('AirTemp')
+                if air_temp is not None:
+                    # Use air temperature as baseline for cold tires
+                    air_temp_fahrenheit = (air_temp * 9/5) + 32
+                    logger.info(f"🌡️ Using air temperature fallback: {air_temp:.1f}°C = {air_temp_fahrenheit:.1f}°F")
+                    for display_name in ['tireTempLF', 'tireTempRF', 'tireTempLR', 'tireTempRR']:
+                        telemetry[display_name] = air_temp_fahrenheit
+                        data_count += 1
+                    logger.debug(f"Using air temperature {air_temp_fahrenheit:.1f}°F for cold tires")
+                else:
+                    # If no air temp available, let's try to see if iRacing has any tire temp at all (even if 0)
+                    logger.info("🔍 No air temp available, checking raw tire temps including zeros...")
+                    for display_name, irsdk_key in tire_temp_mapping.items():
+                        temp = self.safe_get_telemetry(irsdk_key)
+                        logger.info(f"Raw tire temp {irsdk_key}: {temp}")
+                        if temp is not None:
+                            # Show even zero temperatures with conversion
+                            temp_fahrenheit = (temp * 9/5) + 32
+                            telemetry[display_name] = temp_fahrenheit
+                            data_count += 1
+                            logger.info(f"Using raw {display_name}: {temp:.1f}°C = {temp_fahrenheit:.1f}°F")
             
             # Get tire pressures
-            tire_pressures = {}
-            for corner in ['LF', 'RF', 'LR', 'RR']:
-                key = f'{corner}TirePres'
-                pressure = self.safe_get_telemetry(key)
+            tire_pressure_mapping = {
+                'tirePressureLF': 'LFTirePres',
+                'tirePressureRF': 'RFTirePres',
+                'tirePressureLR': 'LRTirePres', 
+                'tirePressureRR': 'RRTirePres'
+            }
+            
+            for display_name, irsdk_key in tire_pressure_mapping.items():
+                pressure = self.safe_get_telemetry(irsdk_key)
                 if pressure is not None:
-                    tire_pressures[key] = pressure
+                    telemetry[display_name] = pressure
                     data_count += 1
             
-            if tire_pressures:
-                telemetry['TirePressures'] = tire_pressures
+            # Get brake temperatures (all four corners)
+            brake_temp_mapping = {
+                'brakeTempLF': 'LFbrakeLineTemp',
+                'brakeTempRF': 'RFbrakeLineTemp',
+                'brakeTempLR': 'LRbrakeLineTemp',
+                'brakeTempRR': 'RRbrakeLineTemp'
+            }
             
-            # Get brake pressures
-            brake_pressures = {}
-            for corner in ['LF', 'RF', 'LR', 'RR']:
-                key = f'{corner}brakeLinePress'
-                pressure = self.safe_get_telemetry(key)
-                if pressure is not None:
-                    brake_pressures[key] = pressure
+            brake_data_found = False
+            logger.debug("Checking for brake temperature data...")
+            for display_name, irsdk_key in brake_temp_mapping.items():
+                temp = self.safe_get_telemetry(irsdk_key)
+                logger.debug(f"Brake temp {irsdk_key}: {temp}")
+                if temp is not None and temp > 0:  # Only use valid temperatures > 0
+                    # Convert brake temperature from Celsius to Fahrenheit
+                    temp_fahrenheit = (temp * 9/5) + 32
+                    telemetry[display_name] = temp_fahrenheit
                     data_count += 1
+                    brake_data_found = True
+                    logger.debug(f"Added {display_name}: {temp_fahrenheit:.1f}°F")
             
-            if brake_pressures:
-                telemetry['BrakePressures'] = brake_pressures
+            # If primary brake temps aren't available, try alternate field names
+            if not brake_data_found:
+                logger.debug("Primary brake temps not found, trying alternates...")
+                alternate_brake_mapping = {
+                    'brakeTempLF': ['LFBrakeLineTemp', 'LFbrakeTempAir', 'LFShockDefl'],
+                    'brakeTempRF': ['RFBrakeLineTemp', 'RFbrakeTempAir', 'RFShockDefl'],
+                    'brakeTempLR': ['LRBrakeLineTemp', 'LRbrakeTempAir', 'LRShockDefl'],
+                    'brakeTempRR': ['RRBrakeLineTemp', 'RRbrakeTempAir', 'RRShockDefl']
+                }
+                
+                for display_name, alt_keys in alternate_brake_mapping.items():
+                    for alt_key in alt_keys:
+                        temp = self.safe_get_telemetry(alt_key)
+                        logger.debug(f"Alternate brake temp {alt_key}: {temp}")
+                        if temp is not None and temp > 0:
+                            # Convert brake temperature from Celsius to Fahrenheit
+                            temp_fahrenheit = (temp * 9/5) + 32
+                            telemetry[display_name] = temp_fahrenheit
+                            data_count += 1
+                            logger.info(f"Using alternate brake temp field {alt_key} for {display_name}: {temp_fahrenheit:.1f}°F")
+                            brake_data_found = True
+                            break
             
-            # Only return if we got some real data
-            if data_count > 5:  # Need at least some basic telemetry
+            # If still no brake data, provide ambient baseline temperatures
+            if not brake_data_found:
+                air_temp = self.safe_get_telemetry('AirTemp')
+                if air_temp is not None:
+                    # Use air temperature + small offset for cold brakes
+                    air_temp_fahrenheit = (air_temp * 9/5) + 32
+                    cold_brake_temp = air_temp_fahrenheit + 10  # Cold brakes are slightly warmer than air
+                    for display_name in ['brakeTempLF', 'brakeTempRF', 'brakeTempLR', 'brakeTempRR']:
+                        telemetry[display_name] = cold_brake_temp
+                        data_count += 1
+                    logger.debug(f"Using baseline temperature {cold_brake_temp:.1f}°F for cold brakes")
+            
+            # Return the completed telemetry data
+            if data_count > 0:
+                logger.debug(f"✅ Returning telemetry with {data_count} fields")
                 return telemetry
             else:
+                logger.debug("❌ No telemetry data available")
                 return None
-            
+                
         except Exception as e:
-            logger.error(f"Error getting telemetry: {e}")
+            logger.error(f"Error getting telemetry data: {e}")
             return None
-    
+
     async def telemetry_loop(self):
-        """Main telemetry collection loop"""
-        logger.info("Starting GT3 telemetry collection...")
-        connection_retry_count = 0
+        """Main telemetry collection and broadcasting loop"""
         last_telemetry_time = 0
         
         while True:
             try:
-                # Check if we're connected to iRacing
-                if not self.is_connected_to_iracing:
-                    if self.connect_to_iracing():
-                        self.is_connected_to_iracing = True
-                        connection_retry_count = 0
-                        logger.info("✅ Connected to iRacing!")
-                        
-                        await self.broadcast_to_clients({
-                            "type": "Connected",
-                            "message": "iRacing connected"
-                        })
-                        
-                        # Send basic session info
-                        session_info = self.get_session_info()
-                        if session_info:
-                            self.last_session_info = session_info
-                            await self.broadcast_to_clients({
-                                "type": "SessionInfo", 
-                                "data": session_info
-                            })
-                            logger.info("📋 Basic session info sent to clients")
-                    else:
-                        connection_retry_count += 1
-                        if connection_retry_count % 12 == 0:  # Log every minute
-                            logger.info(f"⏳ Waiting for iRacing... (attempt {connection_retry_count})")
-                        await asyncio.sleep(5)
-                        continue
-                
-                # Check if still connected
+                # Check connection and update connection status 
                 if not self.check_connection_status():
-                    logger.info("❌ Lost connection to iRacing")
-                    self.is_connected_to_iracing = False
-                    await self.broadcast_to_clients({
-                        "type": "Disconnected",
-                        "message": "iRacing disconnected"
-                    })
+                    if self.is_connected_to_iracing:
+                        logger.info("❌ Lost connection to iRacing")
+                        self.is_connected_to_iracing = False
+                        await self.broadcast_to_clients({
+                            "type": "Telemetry",
+                            "data": {"isConnected": False},
+                            "isConnected": False
+                        })
+                    await asyncio.sleep(2)  # Check more frequently when disconnected
                     continue
                 
-                # Get telemetry data
+                if not self.is_connected_to_iracing:
+                    logger.info("✅ Connected to iRacing!")
+                    self.is_connected_to_iracing = True
+                
+                # Get telemetry and session info
                 telemetry = self.get_telemetry_data()
+                session_info = self.get_session_info()
+                
                 if telemetry:
+                    # Add connection status to telemetry data
+                    telemetry['isConnected'] = True
                     self.last_telemetry = telemetry
                     
                     # Log PaceFlags when they change (no converter errors!)
-                    if 'PaceFlags' in telemetry and telemetry['PaceFlags'] != 0:
-                        logger.debug(f"🏁 PaceFlags: {telemetry['PaceFlags']}")
+                    if 'paceFlags' in telemetry and telemetry['paceFlags'] != 0:
+                        logger.debug(f"🏁 PaceFlags: {telemetry['paceFlags']}")
                     
                     await self.broadcast_to_clients({
                         "type": "Telemetry",
-                        "data": telemetry
+                        "data": telemetry,
+                        "isConnected": True
                     })
                     
                     # Log successful telemetry occasionally
                     current_time = time.time()
                     if current_time - last_telemetry_time > 10:  # Every 10 seconds
-                        logger.info(f"📊 Telemetry streaming (Speed: {telemetry.get('Speed', 0):.1f} mph, RPM: {telemetry.get('RPM', 0):.0f})")
+                        logger.info(f"� Telemetry streaming (Speed: {telemetry.get('speed', 0):.1f} mph, RPM: {telemetry.get('rpm', 0):.0f})")
+                        
+                        # Debug tire temperatures if available
+                        tire_temps = [f"{k}: {v:.1f}°F" for k, v in telemetry.items() if k.startswith('tireTemp') and v is not None]
+                        if tire_temps:
+                            logger.info(f"🔥 Tire temps: {', '.join(tire_temps)}")
+                        
+                        # Debug brake temperatures if available
+                        brake_temps = [f"{k}: {v:.1f}°F" for k, v in telemetry.items() if k.startswith('brakeTemp') and v is not None]
+                        if brake_temps:
+                            logger.info(f"🔥 Brake temps: {', '.join(brake_temps)}")
+                        
+                        # Debug AI coaching status
+                        if 'coachingMessage' in telemetry:
+                            logger.info(f"🤖 AI Coach: {telemetry['coachingMessage']} (P{telemetry.get('coachingPriority', 'N/A')})")
+                        
                         last_telemetry_time = current_time
                 
                 # Update at 60Hz for responsive GT3 coaching

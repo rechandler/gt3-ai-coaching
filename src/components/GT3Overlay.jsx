@@ -18,7 +18,7 @@ const useIRacingTelemetry = () => {
   useEffect(() => {
     const connectWebSocket = () => {
       try {
-        ws.current = new WebSocket("ws://localhost:8080");
+        ws.current = new WebSocket("ws://localhost:8081");
 
         ws.current.onopen = () => {
           console.log("Connected to iRacing telemetry server");
@@ -27,9 +27,36 @@ const useIRacingTelemetry = () => {
 
         ws.current.onmessage = (event) => {
           try {
-            const data = JSON.parse(event.data);
-            setTelemetryData(data);
-            setIsConnected(data.isConnected || false);
+            const message = JSON.parse(event.data);
+            console.log("Received message:", message); // Debug log
+
+            // Handle different message types
+            if (message.type === "Telemetry" && message.data) {
+              // Add specific fuel debugging
+              if (
+                message.data.fuelLevel !== undefined ||
+                message.data.fuelLevelPct !== undefined
+              ) {
+                console.log("Fuel data:", {
+                  fuelLevel: message.data.fuelLevel,
+                  fuelLevelPct: message.data.fuelLevelPct,
+                  fuelUsePerHour: message.data.fuelUsePerHour,
+                });
+              }
+
+              setTelemetryData(message.data);
+              setIsConnected(
+                message.isConnected || message.data.isConnected || false
+              );
+            } else if (message.type === "Connected") {
+              setIsConnected(message.isConnected || false);
+            } else if (message.type === "Disconnected") {
+              setIsConnected(false);
+            } else {
+              // For backward compatibility, treat as direct telemetry data
+              setTelemetryData(message);
+              setIsConnected(message.isConnected || false);
+            }
           } catch (error) {
             console.error("Error parsing telemetry data:", error);
           }
@@ -238,29 +265,42 @@ const GT3OverlaySystem = () => {
     }
   };
 
-  const DeltaTimeWidget = () => (
-    <div className="text-center">
-      <div
-        className={`text-4xl font-bold ${
-          telemetryData?.deltaTime && telemetryData.deltaTime < 0
-            ? "text-green-400"
-            : "text-red-400"
-        }`}
-      >
-        {telemetryData?.deltaTime
-          ? `${
-              telemetryData.deltaTime >= 0 ? "+" : ""
-            }${telemetryData.deltaTime.toFixed(3)}`
-          : "0.000"}
-      </div>
-      <div className="text-sm text-gray-400">Delta Time</div>
-      {telemetryData?.lapBestLapTime && (
-        <div className="text-xs text-gray-500 mt-1">
-          Best: {telemetryData.lapBestLapTime.toFixed(3)}s
+  const DeltaTimeWidget = () => {
+    const isInPits = telemetryData?.onPitRoad;
+    const hasDelta =
+      telemetryData?.deltaTime !== null &&
+      telemetryData?.deltaTime !== undefined;
+
+    return (
+      <div className="text-center">
+        <div
+          className={`text-4xl font-bold ${
+            isInPits
+              ? "text-gray-500"
+              : hasDelta && telemetryData.deltaTime < 0
+              ? "text-green-400"
+              : "text-red-400"
+          }`}
+        >
+          {isInPits
+            ? "PIT"
+            : hasDelta
+            ? `${
+                telemetryData.deltaTime >= 0 ? "+" : ""
+              }${telemetryData.deltaTime.toFixed(3)}`
+            : "0.000"}
         </div>
-      )}
-    </div>
-  );
+        <div className="text-sm text-gray-400">
+          {isInPits ? "In Pits" : "Delta Time"}
+        </div>
+        {telemetryData?.lapBestLapTime && !isInPits && (
+          <div className="text-xs text-gray-500 mt-1">
+            Best: {telemetryData.lapBestLapTime.toFixed(3)}s
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const TireTempsWidget = () => (
     <div className="grid grid-cols-2 gap-2">
@@ -312,13 +352,35 @@ const GT3OverlaySystem = () => {
   );
 
   const FuelWidget = () => {
-    const lapsRemaining =
-      telemetryData?.fuelLevel && telemetryData?.fuelUsePerHour
-        ? (
-            telemetryData.fuelLevel /
-            (telemetryData.fuelUsePerHour / 60)
-          ).toFixed(1)
-        : "--";
+    // Calculate laps remaining more accurately
+    // We need fuel use per lap, not per hour
+    // If we have current lap time and fuel use per hour, we can estimate
+    let lapsRemaining = "--";
+
+    if (
+      telemetryData?.fuelLevel &&
+      telemetryData?.fuelUsePerHour &&
+      telemetryData?.lapLastLapTime
+    ) {
+      // Convert lap time from seconds to hours for calculation
+      const lapTimeHours = telemetryData.lapLastLapTime / 3600;
+      const fuelPerLap = telemetryData.fuelUsePerHour * lapTimeHours;
+
+      if (fuelPerLap > 0) {
+        lapsRemaining = (telemetryData.fuelLevel / fuelPerLap).toFixed(1);
+      }
+    } else if (telemetryData?.fuelLevel && telemetryData?.fuelUsePerHour) {
+      // Fallback: estimate based on 90-second laps (typical for many tracks)
+      const estimatedLapTimeHours = 90 / 3600; // 90 seconds in hours
+      const estimatedFuelPerLap =
+        telemetryData.fuelUsePerHour * estimatedLapTimeHours;
+
+      if (estimatedFuelPerLap > 0) {
+        lapsRemaining = (telemetryData.fuelLevel / estimatedFuelPerLap).toFixed(
+          1
+        );
+      }
+    }
 
     return (
       <div className="text-center">
@@ -359,6 +421,30 @@ const GT3OverlaySystem = () => {
         >
           {telemetryData?.brakeTempRF
             ? telemetryData.brakeTempRF.toFixed(0)
+            : "--"}
+          °F
+        </span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-sm">RL</span>
+        <span
+          className="text-sm font-bold"
+          style={{ color: getBrakeColor(telemetryData?.brakeTempLR) }}
+        >
+          {telemetryData?.brakeTempLR
+            ? telemetryData.brakeTempLR.toFixed(0)
+            : "--"}
+          °F
+        </span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-sm">RR</span>
+        <span
+          className="text-sm font-bold"
+          style={{ color: getBrakeColor(telemetryData?.brakeTempRR) }}
+        >
+          {telemetryData?.brakeTempRR
+            ? telemetryData.brakeTempRR.toFixed(0)
             : "--"}
           °F
         </span>

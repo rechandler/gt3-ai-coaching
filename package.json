@@ -29,7 +29,11 @@
     "build-all": "npm run build && electron-builder --win --mac --linux",
     "postinstall": "electron-builder install-app-deps",
     "setup": "node scripts/dev-setup.js",
-    "tailwind-init": "npx tailwindcss init -p"
+    "tailwind-init": "npx tailwindcss init -p",
+    "start-telemetry": "python python-server/telemetry-server.py",
+    "startPy": "concurrently \"npm run start-telemetry\" \"electron .\"",
+    "devPy": "concurrently \"npm run start-telemetry\" \"npm start\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron": "electron ."
   },
   "base": "./",
   "build": {
@@ -64,16 +68,15 @@
   "dependencies": {
     "electron-updater": "^6.1.4",
     "lucide-react": "^0.263.1",
-    "node-irsdk": "github:rechandler/node-irsdk#main",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
     "recharts": "^2.8.0",
-    "ws": "^8.14.2"
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.21",
-    "concurrently": "^8.2.0",
+    "concurrently": "^8.2.2",
     "electron": "^27.0.0",
     "electron-builder": "^24.6.4",
     "postcss": "^8.5.6",

@@ -1,6 +1,7 @@
 const { app, BrowserWindow, screen, globalShortcut, Menu, Tray, dialog, nativeImage } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
+const EnhancedIRacingTelemetryServer = require('../src/telemetry-server');
 
 let overlayWindow;
 let telemetryServer;
@@ -189,37 +190,86 @@ function createTray() {
 
 function startTelemetryServer() {
   try {
-    console.log('Starting telemetry server...');
-    const isDev = process.env.ELECTRON_IS_DEV === 'true';
-    const serverPath = isDev 
-      ? path.join(__dirname, '../src/telemetry-server.js')
-      : path.join(process.resourcesPath, 'app', 'src/telemetry-server.js');
+    console.log('[Electron] Starting telemetry server...');
     
-    console.log('Telemetry server path:', serverPath);
+    // Create an instance of the telemetry server (imports the module)
+    telemetryServer = new EnhancedIRacingTelemetryServer();
     
-    telemetryServer = spawn('node', [serverPath], { 
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    telemetryServer.stdout.on('data', (data) => {
-      console.log(`Telemetry: ${data}`);
-    });
-
-    telemetryServer.stderr.on('data', (data) => {
-      console.error(`Telemetry Error: ${data}`);
-    });
-
-    telemetryServer.on('error', (err) => {
-      console.error('Failed to start telemetry server:', err);
+    // Handle telemetry events - FIXED: Use overlayWindow instead of mainWindow
+    telemetryServer.on('Connected', () => {
+      console.log('[Electron] ✅ Connected to Python telemetry server');
+      if (overlayWindow) {  // ✅ FIXED: Changed from mainWindow to overlayWindow
+        overlayWindow.webContents.send('telemetry-status', 'connected');
+      }
     });
     
-    telemetryServer.on('exit', (code) => {
-      console.log(`Telemetry server exited with code ${code}`);
+    telemetryServer.on('Disconnected', () => {
+      console.log('[Electron] ❌ Disconnected from Python telemetry server');
+      if (overlayWindow) {  // ✅ FIXED: Changed from mainWindow to overlayWindow
+        overlayWindow.webContents.send('telemetry-status', 'disconnected');
+      }
     });
     
-    console.log('Telemetry server started with PID:', telemetryServer.pid);
+    telemetryServer.on('GT3Telemetry', (data) => {
+      // Send telemetry data to your renderer process
+      if (overlayWindow) {  // ✅ FIXED: Changed from mainWindow to overlayWindow
+        overlayWindow.webContents.send('telemetry-data', data);
+      }
+    });
+    
+    telemetryServer.on('GT3CarDetected', (car) => {
+      console.log(`[Electron] 🏎️ GT3 Car detected: ${car.name}`);
+      if (overlayWindow) {  // ✅ FIXED: Changed from mainWindow to overlayWindow
+        overlayWindow.webContents.send('gt3-car-detected', car);
+      }
+    });
+    
+    telemetryServer.on('TireWarning', (warning) => {
+      console.log('[Electron] 🔥 Tire warning:', warning.warnings);
+      if (overlayWindow) {  // ✅ FIXED: Changed from mainWindow to overlayWindow
+        overlayWindow.webContents.send('tire-warning', warning);
+      }
+    });
+    
+    telemetryServer.on('FuelWarning', (warning) => {
+      console.log('[Electron] ⛽ Fuel warning:', warning.message);
+      if (overlayWindow) {  // ✅ FIXED: Changed from mainWindow to overlayWindow
+        overlayWindow.webContents.send('fuel-warning', warning);
+      }
+    });
+    
+    telemetryServer.on('BrakeWarning', (warning) => {
+      console.log('[Electron] 🛑 Brake warning:', warning.message);
+      if (overlayWindow) {  // ✅ NEW: Added brake warning handler
+        overlayWindow.webContents.send('brake-warning', warning);
+      }
+    });
+    
+    telemetryServer.on('LapCompleted', (lapTime) => {
+      console.log('[Electron] 🏁 Lap completed:', telemetryServer.formatTime ? telemetryServer.formatTime(lapTime) : lapTime);
+      if (overlayWindow) {  // ✅ NEW: Added lap completed handler
+        overlayWindow.webContents.send('lap-completed', lapTime);
+      }
+    });
+    
+    telemetryServer.on('BestLap', (lapTime) => {
+      console.log('[Electron] 🎯 New best lap:', telemetryServer.formatTime ? telemetryServer.formatTime(lapTime) : lapTime);
+      if (overlayWindow) {  // ✅ NEW: Added best lap handler
+        overlayWindow.webContents.send('best-lap', lapTime);
+      }
+    });
+    
+    telemetryServer.on('Error', (error) => {
+      console.error('[Electron] Telemetry error:', error);
+      if (overlayWindow) {  // ✅ NEW: Send errors to overlay for debugging
+        overlayWindow.webContents.send('telemetry-error', error.message);
+      }
+    });
+    
+    console.log('[Electron] ✅ Telemetry server initialized (will connect to Python server)');
+    
   } catch (error) {
-    console.error('Error starting telemetry server:', error);
+    console.error('[Electron] Error starting telemetry server:', error);
   }
 }
 
@@ -277,16 +327,26 @@ app.whenReady().then(() => {
   console.log('Application fully initialized');
 });
 
-app.on('window-all-closed', (e) => {
-  console.log('All windows closed, preventing quit');
-  e.preventDefault(); // Keep app running in tray
+function stopTelemetryServer() {
+  if (telemetryServer) {
+    console.log('[Electron] Stopping telemetry server...');
+    // Instead of killing a process, disconnect the WebSocket client
+    telemetryServer.disconnect();
+    telemetryServer = null;
+  }
+}
+
+// Make sure to call stopTelemetryServer in your app.on('window-all-closed') handler
+app.on('window-all-closed', () => {
+  stopTelemetryServer();  // Clean up
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });
 
 app.on('before-quit', () => {
   console.log('App quitting, cleaning up...');
-  if (telemetryServer) {
-    telemetryServer.kill();
-  }
+  stopTelemetryServer();
 });
 
 app.on('will-quit', () => {

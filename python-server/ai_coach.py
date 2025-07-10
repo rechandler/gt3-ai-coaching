@@ -66,6 +66,11 @@ class LocalAICoach:
         self.target_tire_temps = {'LF': 220, 'RF': 220, 'LR': 200, 'RR': 200}  # Fahrenheit
         self.target_brake_temps = {'LF': 400, 'RF': 400, 'LR': 350, 'RR': 350}  # Fahrenheit
         
+        # Advanced learning attributes
+        self.driving_style = "unknown"  # consistent, developing, improving
+        self.coaching_intensity = 1.0   # Adaptive coaching intensity
+        self.track_learning = {}        # Track-specific learned patterns
+        
         logger.info("🤖 Local AI Coach initialized - ready to learn your driving style")
     
     def process_telemetry(self, telemetry: Dict[str, Any]) -> List[CoachingMessage]:
@@ -193,9 +198,129 @@ class LocalAICoach:
     
     def _update_ai_models(self, lap: LapData):
         """Update AI learning models with new lap data"""
-        # This is where machine learning would happen in a full implementation
-        # For now, we'll do statistical learning
-        pass
+        try:
+            # 1. Learn optimal tire temperature management
+            self._learn_tire_management(lap)
+            
+            # 2. Analyze and learn from brake patterns
+            self._learn_brake_patterns(lap)
+            
+            # 3. Update driving style classification
+            self._classify_driving_style(lap)
+            
+            # 4. Learn track-specific patterns (if we have position data)
+            self._learn_track_patterns(lap)
+            
+            # 5. Adaptive threshold updates
+            self._update_adaptive_thresholds(lap)
+            
+            logger.debug(f"🧠 AI models updated with lap {lap.lap_number} data")
+            
+        except Exception as e:
+            logger.error(f"Error updating AI models: {e}")
+    
+    def _learn_tire_management(self, lap: LapData):
+        """Learn optimal tire temperature patterns from successful laps"""
+        if not lap.tire_temps or lap.lap_time <= 0:
+            return
+            
+        # Only learn from good laps (within 102% of best time)
+        if self.best_lap and lap.lap_time > self.best_lap.lap_time * 1.02:
+            return
+            
+        # Update optimal temperature targets based on fast laps
+        for tire, temp in lap.tire_temps.items():
+            if temp > 0:  # Valid temperature
+                current_target = self.target_tire_temps[tire]
+                
+                # Exponential moving average to learn optimal temps
+                alpha = self.learning_rate
+                self.target_tire_temps[tire] = (1 - alpha) * current_target + alpha * temp
+                
+        logger.debug(f"🌡️ Updated tire targets: {self.target_tire_temps}")
+    
+    def _learn_brake_patterns(self, lap: LapData):
+        """Learn optimal brake temperature patterns"""
+        if not lap.brake_temps or lap.lap_time <= 0:
+            return
+            
+        # Only learn from good laps
+        if self.best_lap and lap.lap_time > self.best_lap.lap_time * 1.02:
+            return
+            
+        # Update optimal brake temperature targets
+        for brake, temp in lap.brake_temps.items():
+            if temp > 0:  # Valid temperature
+                current_target = self.target_brake_temps[brake]
+                
+                # Learn optimal brake temps (cooler is generally better for consistency)
+                alpha = self.learning_rate * 0.5  # Learn slower for brakes
+                self.target_brake_temps[brake] = (1 - alpha) * current_target + alpha * temp
+                
+        logger.debug(f"🔥 Updated brake targets: {self.target_brake_temps}")
+    
+    def _classify_driving_style(self, lap: LapData):
+        """Classify and adapt to driver's style"""
+        if len(self.laps) < 5:
+            return
+            
+        # Analyze recent consistency
+        recent_times = [l.lap_time for l in self.laps[-5:] if l.lap_time > 0]
+        if len(recent_times) < 3:
+            return
+            
+        consistency = np.std(recent_times) / np.mean(recent_times)
+        
+        # Classify driving style and adapt coaching
+        if consistency < 0.01:  # Very consistent (< 1% variation)
+            self.driving_style = "consistent"
+            self.coaching_intensity = 0.7  # Less aggressive coaching
+        elif consistency > 0.05:  # Inconsistent (> 5% variation)
+            self.driving_style = "developing"
+            self.coaching_intensity = 1.2  # More guidance needed
+        else:
+            self.driving_style = "improving"
+            self.coaching_intensity = 1.0  # Standard coaching
+            
+        logger.debug(f"🎯 Driving style: {getattr(self, 'driving_style', 'unknown')}, intensity: {getattr(self, 'coaching_intensity', 1.0)}")
+    
+    def _learn_track_patterns(self, lap: LapData):
+        """Learn track-specific patterns (placeholder for future enhancement)"""
+        # This would analyze racing line, speed patterns, etc.
+        # For now, just store lap time patterns
+        if hasattr(self, 'track_learning'):
+            self.track_learning['lap_times'].append(lap.lap_time)
+        else:
+            self.track_learning = {'lap_times': [lap.lap_time]}
+            
+        # Keep only recent data (last 20 laps)
+        if len(self.track_learning['lap_times']) > 20:
+            self.track_learning['lap_times'] = self.track_learning['lap_times'][-20:]
+    
+    def _update_adaptive_thresholds(self, lap: LapData):
+        """Update coaching thresholds based on driver improvement"""
+        if len(self.laps) < 10:
+            return
+            
+        # Get recent performance trend
+        recent_laps = self.laps[-10:]
+        recent_times = [l.lap_time for l in recent_laps if l.lap_time > 0]
+        
+        if len(recent_times) < 5:
+            return
+            
+        # Calculate improvement trend
+        first_half = np.mean(recent_times[:len(recent_times)//2])
+        second_half = np.mean(recent_times[len(recent_times)//2:])
+        improvement_rate = (first_half - second_half) / first_half
+        
+        # Adapt thresholds based on improvement
+        if improvement_rate > 0.02:  # Improving fast (>2%)
+            self.consistency_threshold *= 0.95  # Tighten standards
+            logger.info("🚀 Driver improving rapidly - raising coaching standards")
+        elif improvement_rate < -0.01:  # Getting slower
+            self.consistency_threshold *= 1.05  # Be more forgiving
+            logger.info("📉 Performance declining - adjusting coaching approach")
     
     def _analyze_tire_management(self, telemetry: Dict[str, Any]) -> List[CoachingMessage]:
         """Analyze tire temperatures and provide management advice"""
@@ -208,25 +333,28 @@ class LocalAICoach:
             'RR': telemetry.get('tireTempRR', 0)
         }
         
+        # Apply coaching intensity modifier
+        intensity = getattr(self, 'coaching_intensity', 1.0)
+        
         # Check for overheating
         for tire, temp in tire_temps.items():
             if temp > 0:  # Valid temperature
                 target = self.target_tire_temps[tire]
                 
-                if temp > target + 30:  # Overheating
+                if temp > target + (30 / intensity):  # Adaptive threshold
                     messages.append(CoachingMessage(
                         message=f"{tire} tire overheating ({temp:.0f}°F) - ease off the pace",
                         category="tires",
-                        priority=8,
+                        priority=min(10, int(8 * intensity)),
                         confidence=90,
                         data_source="tire_temp",
                         improvement_potential=0.5
                     ))
-                elif temp > target + 15:  # Getting hot
+                elif temp > target + (15 / intensity):  # Getting hot
                     messages.append(CoachingMessage(
                         message=f"{tire} tire getting hot ({temp:.0f}°F) - manage pace",
                         category="tires",
-                        priority=5,
+                        priority=min(10, int(5 * intensity)),
                         confidence=85,
                         data_source="tire_temp"
                     ))
@@ -239,27 +367,34 @@ class LocalAICoach:
                         data_source="tire_temp"
                     ))
         
-        # Check tire balance
+        # Check tire balance with learned targets
         if all(temp > 0 for temp in tire_temps.values()):
             front_avg = (tire_temps['LF'] + tire_temps['RF']) / 2
             rear_avg = (tire_temps['LR'] + tire_temps['RR']) / 2
             
-            if front_avg > rear_avg + 20:
-                messages.append(CoachingMessage(
-                    message="Front tires much hotter than rear - check setup or driving style",
-                    category="tires",
-                    priority=6,
-                    confidence=75,
-                    data_source="tire_balance"
-                ))
-            elif rear_avg > front_avg + 20:
-                messages.append(CoachingMessage(
-                    message="Rear tires much hotter than front - possible oversteer or setup issue",
-                    category="tires",
-                    priority=6,
-                    confidence=75,
-                    data_source="tire_balance"
-                ))
+            # Use learned optimal balance
+            learned_front_avg = (self.target_tire_temps['LF'] + self.target_tire_temps['RF']) / 2
+            learned_rear_avg = (self.target_tire_temps['LR'] + self.target_tire_temps['RR']) / 2
+            learned_balance = learned_front_avg - learned_rear_avg
+            current_balance = front_avg - rear_avg
+            
+            if abs(current_balance - learned_balance) > 15:
+                if current_balance > learned_balance:
+                    messages.append(CoachingMessage(
+                        message="Front tires running hotter than your optimal balance - adjust driving style",
+                        category="tires",
+                        priority=6,
+                        confidence=80,
+                        data_source="tire_balance_learned"
+                    ))
+                else:
+                    messages.append(CoachingMessage(
+                        message="Rear tires running hotter than your optimal balance - check setup",
+                        category="tires",
+                        priority=6,
+                        confidence=80,
+                        data_source="tire_balance_learned"
+                    ))
         
         return messages
     
@@ -456,7 +591,13 @@ class LocalAICoach:
             "best_lap_time": self.best_lap.lap_time if self.best_lap else None,
             "best_lap_number": self.best_lap.lap_number if self.best_lap else None,
             "session_duration": time.time() - self.session_start_time,
-            "baseline_established": self.baseline_established
+            "baseline_established": self.baseline_established,
+            
+            # AI Learning Insights
+            "driving_style": getattr(self, 'driving_style', 'unknown'),
+            "coaching_intensity": getattr(self, 'coaching_intensity', 1.0),
+            "learned_tire_temps": self.target_tire_temps,
+            "learned_brake_temps": self.target_brake_temps
         }
         
         if len(self.laps) >= 3:
@@ -464,7 +605,31 @@ class LocalAICoach:
             summary.update({
                 "average_lap_time": np.mean(lap_times),
                 "consistency": np.std(lap_times) / np.mean(lap_times) if lap_times else 0,
-                "improvement": (max(lap_times) - min(lap_times)) if len(lap_times) > 1 else 0
+                "improvement": (max(lap_times) - min(lap_times)) if len(lap_times) > 1 else 0,
+                
+                # Performance trend analysis
+                "recent_trend": self._calculate_improvement_trend(lap_times)
             })
         
         return summary
+    
+    def _calculate_improvement_trend(self, lap_times: List[float]) -> str:
+        """Calculate if driver is improving, stable, or declining"""
+        if len(lap_times) < 6:
+            return "insufficient_data"
+            
+        # Compare first third vs last third of session
+        third = len(lap_times) // 3
+        early_avg = np.mean(lap_times[:third])
+        late_avg = np.mean(lap_times[-third:])
+        
+        improvement = (early_avg - late_avg) / early_avg
+        
+        if improvement > 0.02:  # More than 2% improvement
+            return "improving_fast"
+        elif improvement > 0.005:  # More than 0.5% improvement
+            return "improving"
+        elif improvement > -0.005:  # Within 0.5%
+            return "stable"
+        else:
+            return "declining"

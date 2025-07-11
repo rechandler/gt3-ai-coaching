@@ -1,0 +1,216 @@
+.update-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10000;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.update-check-section {
+  margin-bottom: 10px;
+}
+
+.update-check-button {
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid #333;
+  border-radius: 20px;
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.3s ease;
+}
+
+.update-check-button:hover {
+  background: rgba(0, 0, 0, 0.9);
+  border-color: #555;
+}
+
+.update-notification {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  color: white;
+  max-width: 350px;
+  animation: slideIn 0.5s ease-out;
+}
+
+.update-notification.update-available {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.update-notification.update-ready {
+  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.update-content {
+  padding: 20px;
+}
+
+.update-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 15px;
+}
+
+.update-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.update-icon {
+  font-size: 24px;
+  margin-right: 10px;
+}
+
+.update-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s ease;
+}
+
+.update-close:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.update-content p {
+  margin: 0 0 15px 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.update-content small {
+  opacity: 0.8;
+  font-size: 12px;
+}
+
+.update-notes {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 15px 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.update-notes strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.update-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.update-button {
+  border: none;
+  border-radius: 6px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  flex: 1;
+}
+
+.update-button.primary {
+  background: white;
+  color: #333;
+}
+
+.update-button.primary:hover {
+  background: #f0f0f0;
+  transform: translateY(-1px);
+}
+
+.update-button.secondary {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.update-button.secondary:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.download-progress {
+  width: 100%;
+  text-align: center;
+}
+
+.progress-bar {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  height: 8px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  background: white;
+  height: 100%;
+  border-radius: 10px;
+  transition: width 0.3s ease;
+}
+
+.download-progress span {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Dark theme compatibility */
+@media (prefers-color-scheme: dark) {
+  .update-check-button {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  
+  .update-check-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .update-container {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+  }
+  
+  .update-notification {
+    max-width: none;
+  }
+  
+  .update-actions {
+    flex-direction: column;
+  }
+}

@@ -9,6 +9,8 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
+import UpdateNotification from "./UpdateNotification";
+import "./GT3Overlay.css";
 
 const useIRacingTelemetry = () => {
   const [telemetryData, setTelemetryData] = useState(null);
@@ -711,6 +713,8 @@ const GT3OverlaySystem = () => {
       >
         <UserProfileWidget />
       </DraggableWidget>
+
+      <UpdateNotification />
     </div>
   );
 };

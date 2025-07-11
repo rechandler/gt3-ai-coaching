@@ -472,43 +472,143 @@ const GT3OverlaySystem = () => {
   );
 
   const CoachingWidget = () => {
-    const priority = telemetryData?.coachingPriority || 0;
-    const category = telemetryData?.coachingCategory || "general";
-    const confidence = telemetryData?.coachingConfidence || 100;
+    const [coachingMessages, setCoachingMessages] = useState([]);
+    const MESSAGE_DISPLAY_TIME = 12000; // 12 seconds per message
+    const MAX_MESSAGES = 4; // Maximum messages to show at once
+
+    // Add new coaching messages and manage duplicates
+    useEffect(() => {
+      if (telemetryData?.coachingMessage && isConnected) {
+        const newMessage = {
+          id: Date.now(),
+          message: telemetryData.coachingMessage,
+          category: telemetryData.coachingCategory || "general",
+          priority: telemetryData.coachingPriority || 0,
+          confidence: telemetryData.coachingConfidence || 100,
+          timestamp: Date.now(),
+          isNew: true,
+        };
+
+        setCoachingMessages((prev) => {
+          // Check if this message already exists (duplicate prevention)
+          const isDuplicate = prev.some(
+            (msg) =>
+              msg.message === newMessage.message &&
+              Date.now() - msg.timestamp < MESSAGE_DISPLAY_TIME
+          );
+
+          if (isDuplicate) {
+            return prev; // Don't add duplicate
+          }
+
+          // Add new message and sort by priority
+          const updated = [newMessage, ...prev]
+            .sort((a, b) => b.priority - a.priority)
+            .slice(0, MAX_MESSAGES); // Keep only top messages
+
+          return updated;
+        });
+      }
+    }, [
+      telemetryData?.coachingMessage,
+      telemetryData?.coachingCategory,
+      telemetryData?.coachingPriority,
+      telemetryData?.coachingConfidence,
+      isConnected,
+    ]);
+
+    // Clean up expired messages
+    useEffect(() => {
+      const interval = setInterval(() => {
+        setCoachingMessages((prev) =>
+          prev.filter(
+            (msg) => Date.now() - msg.timestamp < MESSAGE_DISPLAY_TIME
+          )
+        );
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }, []);
+
+    // Mark messages as no longer new after a brief period
+    useEffect(() => {
+      const timer = setTimeout(() => {
+        setCoachingMessages((prev) =>
+          prev.map((msg) => ({ ...msg, isNew: false }))
+        );
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    }, [coachingMessages.length]);
 
     return (
-      <div
-        className={`bg-opacity-50 rounded p-2 min-h-16 w-80 border-l-4 ${getCoachingColor(
-          category,
-          priority
-        )}`}
-      >
-        <div className="flex items-center justify-between">
+      <div className="bg-opacity-50 rounded p-2 min-h-16 w-80 border-l-4 border-blue-500">
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
             <span className="text-sm font-medium text-blue-300">AI Coach</span>
-            <span className="text-xs">{getCategoryIcon(category)}</span>
+            <span className="text-xs">🧠</span>
           </div>
-          <div className="text-xs text-gray-400">{confidence}% confident</div>
+          <div className="text-xs text-gray-400">
+            {coachingMessages.length} message
+            {coachingMessages.length !== 1 ? "s" : ""}
+          </div>
         </div>
-        <div className="text-sm text-white mt-1">
-          {telemetryData?.coachingMessage ||
-            (isConnected
-              ? "Analyzing..."
-              : "Waiting for iRacing connection...")}
-        </div>
-        {telemetryData?.secondaryMessages &&
-          telemetryData.secondaryMessages.length > 0 && (
-            <div className="mt-2 space-y-1">
-              {telemetryData.secondaryMessages.slice(0, 2).map((msg, index) => (
+
+        {!isConnected ? (
+          <div className="text-sm text-gray-400 mt-1">
+            Waiting for iRacing connection...
+          </div>
+        ) : coachingMessages.length === 0 ? (
+          <div className="text-sm text-gray-400 mt-1">
+            Analyzing your driving...
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {coachingMessages.map((msg, index) => {
+              const age = (Date.now() - msg.timestamp) / 1000;
+              const opacity = Math.max(
+                0.4,
+                1 - (age / (MESSAGE_DISPLAY_TIME / 1000)) * 0.6
+              );
+
+              return (
                 <div
-                  key={index}
-                  className="text-xs text-gray-300 bg-gray-800 bg-opacity-50 rounded px-2 py-1"
+                  key={msg.id}
+                  className={`transition-all duration-500 ${
+                    msg.isNew ? "animate-pulse" : ""
+                  } ${getCoachingColor(msg.category, msg.priority)} 
+                  rounded px-2 py-1 border-l-2`}
+                  style={{ opacity }}
                 >
-                  {getCategoryIcon(msg.category)} {msg.message}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-1">
+                      <span className="text-xs">
+                        {getCategoryIcon(msg.category)}
+                      </span>
+                      <span className="text-xs font-medium text-white">
+                        P{msg.priority}
+                      </span>
+                      {msg.isNew && (
+                        <span className="text-xs bg-blue-500 text-white px-1 rounded">
+                          NEW
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-300">
+                      {msg.confidence}%
+                    </span>
+                  </div>
+                  <div className="text-sm text-white mt-1 leading-tight">
+                    {msg.message}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {Math.round(age)}s ago
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   };

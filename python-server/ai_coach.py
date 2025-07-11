@@ -85,6 +85,10 @@ class LocalAICoach:
         self.coaching_intensity = 1.0   # Adaptive coaching intensity
         self.track_learning = {}        # Track-specific learned patterns
         
+        # Message deduplication system
+        self.recent_messages = {}  # message_text -> timestamp
+        self.message_cooldown = 8.0  # Seconds before same message can be sent again
+        
         logger.info("🤖 Local AI Coach initialized - ready to learn your driving style")
     
     def process_telemetry(self, telemetry: Dict[str, Any]) -> List[CoachingMessage]:
@@ -579,21 +583,51 @@ class LocalAICoach:
         return messages
     
     def _prioritize_messages(self, messages: List[CoachingMessage]) -> List[CoachingMessage]:
-        """Filter and prioritize coaching messages"""
-        if not messages:
-            return [CoachingMessage(
-                message="All systems looking good - keep it up!",
-                category="general",
-                priority=2,
-                confidence=80,
-                data_source="default"
-            )]
+        """Filter and prioritize coaching messages with deduplication"""
+        current_time = time.time()
+        
+        # Clean up old messages from deduplication cache
+        expired_messages = [msg for msg, timestamp in self.recent_messages.items() 
+                          if current_time - timestamp > self.message_cooldown]
+        for msg in expired_messages:
+            del self.recent_messages[msg]
+        
+        # Filter out duplicate messages
+        filtered_messages = []
+        for message in messages:
+            if message.message not in self.recent_messages:
+                filtered_messages.append(message)
+                # Add to recent messages cache
+                self.recent_messages[message.message] = current_time
+            else:
+                # Check if it's a high priority message that should override cooldown
+                time_since_last = current_time - self.recent_messages[message.message]
+                if message.priority >= 8 and time_since_last > (self.message_cooldown / 2):
+                    # Allow critical messages to appear more frequently
+                    filtered_messages.append(message)
+                    self.recent_messages[message.message] = current_time
+        
+        if not filtered_messages:
+            # Return a default message if all messages were filtered out as duplicates
+            default_msg = "All systems looking good - keep it up!"
+            if default_msg not in self.recent_messages or \
+               current_time - self.recent_messages[default_msg] > self.message_cooldown * 2:
+                self.recent_messages[default_msg] = current_time
+                return [CoachingMessage(
+                    message=default_msg,
+                    category="general",
+                    priority=2,
+                    confidence=80,
+                    data_source="default"
+                )]
+            else:
+                return []  # Return empty if even default message is on cooldown
         
         # Sort by priority (higher first)
-        messages.sort(key=lambda x: x.priority, reverse=True)
+        filtered_messages.sort(key=lambda x: x.priority, reverse=True)
         
         # Return top 3 most important messages
-        return messages[:3]
+        return filtered_messages[:3]
     
     def get_session_summary(self) -> Dict[str, Any]:
         """Get AI analysis summary for the session"""

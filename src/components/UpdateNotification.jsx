@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import './UpdateNotification.css';
+import React, { useState, useEffect } from "react";
+import "./UpdateNotification.css";
 
 const UpdateNotification = () => {
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -7,12 +7,12 @@ const UpdateNotification = () => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
-  const [currentVersion, setCurrentVersion] = useState('');
+  const [currentVersion, setCurrentVersion] = useState("");
 
   useEffect(() => {
     // Get current app version
     if (window.electronAPI) {
-      window.electronAPI.getAppVersion().then(version => {
+      window.electronAPI.getAppVersion().then((version) => {
         setCurrentVersion(version);
       });
 
@@ -38,9 +38,9 @@ const UpdateNotification = () => {
     return () => {
       // Clean up listeners
       if (window.electronAPI) {
-        window.electronAPI.removeAllListeners('update-available');
-        window.electronAPI.removeAllListeners('download-progress');
-        window.electronAPI.removeAllListeners('update-downloaded');
+        window.electronAPI.removeAllListeners("update-available");
+        window.electronAPI.removeAllListeners("download-progress");
+        window.electronAPI.removeAllListeners("update-downloaded");
       }
     };
   }, []);
@@ -51,7 +51,7 @@ const UpdateNotification = () => {
     try {
       await window.electronAPI.downloadUpdate();
     } catch (error) {
-      console.error('Error downloading update:', error);
+      console.error("Error downloading update:", error);
       setIsDownloading(false);
     }
   };
@@ -60,7 +60,7 @@ const UpdateNotification = () => {
     try {
       await window.electronAPI.installUpdate();
     } catch (error) {
-      console.error('Error installing update:', error);
+      console.error("Error installing update:", error);
     }
   };
 
@@ -73,10 +73,10 @@ const UpdateNotification = () => {
     try {
       const result = await window.electronAPI.checkForUpdates();
       if (!result.success && result.error) {
-        console.log('No updates available or error:', result.error);
+        console.log("No updates available or error:", result.error);
       }
     } catch (error) {
-      console.error('Error checking for updates:', error);
+      console.error("Error checking for updates:", error);
     }
   };
 
@@ -88,13 +88,12 @@ const UpdateNotification = () => {
     <div className="update-container">
       {/* Manual check button */}
       <div className="update-check-section">
-        <button 
+        <button
           className="update-check-button"
           onClick={handleCheckForUpdates}
           title="Check for updates"
         >
-          <span className="update-icon">🔄</span>
-          v{currentVersion}
+          <span className="update-icon">🔄</span>v{currentVersion}
         </button>
       </div>
 
@@ -105,7 +104,9 @@ const UpdateNotification = () => {
             <div className="update-header">
               <span className="update-icon">🚀</span>
               <h3>Update Available!</h3>
-              <button className="update-close" onClick={handleDismiss}>×</button>
+              <button className="update-close" onClick={handleDismiss}>
+                ×
+              </button>
             </div>
             <p>
               GT3 AI Coaching v{updateInfo?.version} is available!
@@ -115,15 +116,17 @@ const UpdateNotification = () => {
             {updateInfo?.releaseNotes && (
               <div className="update-notes">
                 <strong>What's new:</strong>
-                <div dangerouslySetInnerHTML={{ __html: updateInfo.releaseNotes }} />
+                <div
+                  dangerouslySetInnerHTML={{ __html: updateInfo.releaseNotes }}
+                />
               </div>
             )}
             <div className="update-actions">
               {isDownloading ? (
                 <div className="download-progress">
                   <div className="progress-bar">
-                    <div 
-                      className="progress-fill" 
+                    <div
+                      className="progress-fill"
                       style={{ width: `${downloadProgress}%` }}
                     ></div>
                   </div>
@@ -131,13 +134,13 @@ const UpdateNotification = () => {
                 </div>
               ) : (
                 <>
-                  <button 
+                  <button
                     className="update-button primary"
                     onClick={handleDownloadUpdate}
                   >
                     Download Update
                   </button>
-                  <button 
+                  <button
                     className="update-button secondary"
                     onClick={handleDismiss}
                   >
@@ -157,19 +160,22 @@ const UpdateNotification = () => {
             <div className="update-header">
               <span className="update-icon">✅</span>
               <h3>Update Ready!</h3>
-              <button className="update-close" onClick={handleDismiss}>×</button>
+              <button className="update-close" onClick={handleDismiss}>
+                ×
+              </button>
             </div>
             <p>
-              GT3 AI Coaching v{updateInfo?.version} has been downloaded and is ready to install.
+              GT3 AI Coaching v{updateInfo?.version} has been downloaded and is
+              ready to install.
             </p>
             <div className="update-actions">
-              <button 
+              <button
                 className="update-button primary"
                 onClick={handleInstallUpdate}
               >
                 Restart & Install
               </button>
-              <button 
+              <button
                 className="update-button secondary"
                 onClick={handleDismiss}
               >

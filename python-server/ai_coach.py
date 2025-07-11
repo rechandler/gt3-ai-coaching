@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Local AI Coaching Engine for GT3 Racing
 Provides real-time driving analysis and coaching feedback
@@ -11,6 +12,19 @@ from typing import Dict, List, Optional, Tuple, Any
 from collections import deque, defaultdict
 from dataclasses import dataclass, field
 import json
+import sys
+import io
+
+# Fix Windows Unicode encoding issues
+if sys.platform == 'win32':
+    # Set default encoding for stdout/stderr
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    else:
+        # Fallback for older Python versions
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 logger = logging.getLogger(__name__)
 
@@ -343,7 +357,7 @@ class LocalAICoach:
                 
                 if temp > target + (30 / intensity):  # Adaptive threshold
                     messages.append(CoachingMessage(
-                        message=f"{tire} tire overheating ({temp:.0f}°F) - ease off the pace",
+                        message=f"{tire} tire overheating ({temp:.0f}F) - ease off the pace",
                         category="tires",
                         priority=min(10, int(8 * intensity)),
                         confidence=90,
@@ -352,7 +366,7 @@ class LocalAICoach:
                     ))
                 elif temp > target + (15 / intensity):  # Getting hot
                     messages.append(CoachingMessage(
-                        message=f"{tire} tire getting hot ({temp:.0f}°F) - manage pace",
+                        message=f"{tire} tire getting hot ({temp:.0f}F) - manage pace",
                         category="tires",
                         priority=min(10, int(5 * intensity)),
                         confidence=85,
@@ -360,7 +374,7 @@ class LocalAICoach:
                     ))
                 elif temp < target - 20:  # Too cold
                     messages.append(CoachingMessage(
-                        message=f"{tire} tire cold ({temp:.0f}°F) - push harder to warm up",
+                        message=f"{tire} tire cold ({temp:.0f}F) - push harder to warm up",
                         category="tires",
                         priority=4,
                         confidence=80,
@@ -419,7 +433,7 @@ class LocalAICoach:
                 
                 if temp > target + 100:  # Overheating
                     messages.append(CoachingMessage(
-                        message=f"{brake} brake overheating ({temp:.0f}°F) - brake earlier and lighter",
+                        message=f"{brake} brake overheating ({temp:.0f}F) - brake earlier and lighter",
                         category="braking",
                         priority=9,
                         confidence=95,
@@ -428,7 +442,7 @@ class LocalAICoach:
                     ))
                 elif temp > target + 50:  # Getting hot
                     messages.append(CoachingMessage(
-                        message=f"{brake} brake getting hot ({temp:.0f}°F) - ease brake pressure",
+                        message=f"{brake} brake getting hot ({temp:.0f}F) - ease brake pressure",
                         category="braking",
                         priority=6,
                         confidence=85,

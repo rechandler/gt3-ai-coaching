@@ -3,7 +3,7 @@
   top: 20px;
   right: 20px;
   z-index: 10000;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .update-check-section {
@@ -192,7 +192,7 @@
     background: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.2);
   }
-  
+
   .update-check-button:hover {
     background: rgba(255, 255, 255, 0.2);
   }
@@ -205,11 +205,11 @@
     right: 10px;
     left: 10px;
   }
-  
+
   .update-notification {
     max-width: none;
   }
-  
+
   .update-actions {
     flex-direction: column;
   }

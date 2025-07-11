@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 GT3 AI Coaching - Python iRacing Telemetry Server
 Robust version that works with any pyirsdk variant
@@ -8,9 +9,21 @@ import asyncio
 import json
 import logging
 import websockets
-from websockets.server import serve
 import time
 from typing import Dict, Any, Optional
+import sys
+import io
+
+# Fix Windows Unicode encoding issues
+if sys.platform == 'win32':
+    # Set default encoding for stdout/stderr
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    else:
+        # Fallback for older Python versions
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # Import our local AI coach
 from ai_coach import LocalAICoach
@@ -47,11 +60,12 @@ if LOG_LEVEL not in ['DEBUG', 'INFO', 'WARNING', 'ERROR']:
 logger = logging.getLogger(__name__)
 logger.setLevel(getattr(logging, LOG_LEVEL))
 
-# Create rotating file handler (10MB max, keep 5 files)
+# Create rotating file handler (10MB max, keep 5 files) with UTF-8 encoding
 file_handler = logging.handlers.RotatingFileHandler(
     os.path.join(logs_dir, 'telemetry-server.log'),
     maxBytes=10*1024*1024,  # 10MB
-    backupCount=5
+    backupCount=5,
+    encoding='utf-8'  # Ensure UTF-8 encoding for log files
 )
 file_handler.setLevel(getattr(logging, LOG_LEVEL))
 
@@ -952,7 +966,7 @@ class GT3TelemetryServer:
         """Start the WebSocket server"""
         logger.info(f"🚀 Starting GT3 telemetry server on {self.host}:{self.port}")
         
-        async with serve(self.handle_client, self.host, self.port):
+        async with websockets.serve(self.handle_client, self.host, self.port):
             logger.info(f"✅ GT3 telemetry server running on ws://{self.host}:{self.port}")
             logger.info("🎯 Waiting for iRacing and GT3 AI Coaching to connect...")
             logger.info("💡 Start iRacing and go to any session to begin telemetry streaming")

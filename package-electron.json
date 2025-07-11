@@ -23,11 +23,11 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "postinstall": "electron-builder install-app-deps",
-    
+
     "installer:prepare": "python installer/pre-build.py",
     "installer:build": "cd installer && build-installer.bat",
     "installer:full": "npm run build && npm run installer:prepare && npm run installer:build",
-    
+
     "publish": "electron-builder --publish=always",
     "publish:github": "electron-builder --publish=onTagOrDraft"
   },

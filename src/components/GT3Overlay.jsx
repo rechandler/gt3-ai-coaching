@@ -10,7 +10,6 @@ import {
   WifiOff,
 } from "lucide-react";
 import UpdateNotification from "./UpdateNotification";
-import "./GT3Overlay.css";
 
 const useIRacingTelemetry = () => {
   const [telemetryData, setTelemetryData] = useState(null);

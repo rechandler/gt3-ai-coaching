@@ -42,13 +42,20 @@ def main():
     # Import and start the telemetry server
     try:
         import importlib.util
-        spec = importlib.util.spec_from_file_location("telemetry_server", "telemetry-server.py")
+        # Get the directory where this script is located
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        telemetry_server_path = os.path.join(script_dir, "telemetry-server.py")
+        
+        spec = importlib.util.spec_from_file_location("telemetry_server", telemetry_server_path)
         telemetry_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(telemetry_module)
         
         server = telemetry_module.GT3TelemetryServer()
         print(f"Server starting on {server.host}:{server.port}")
-        server.run()
+        
+        # Start the async server
+        import asyncio
+        asyncio.run(server.start_server())
         
     except ImportError as e:
         print(f"Error importing telemetry server: {e}")

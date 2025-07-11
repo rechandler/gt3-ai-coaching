@@ -137,7 +137,7 @@ class GT3TelemetryServer:
         
         logger.info(f"Available SDK methods: {list(k for k, v in self.available_methods.items() if v.get('exists'))}")
         
-    async def handle_client(self, websocket, path):
+    async def handle_client(self, websocket, path=None):
         """Handle new WebSocket client connections"""
         try:
             logger.info(f"GT3 AI Coaching client connected from {websocket.remote_address}")

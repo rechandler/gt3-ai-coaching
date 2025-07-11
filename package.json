@@ -24,7 +24,7 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "server": "node src/start_server.js",
-    "dev": "concurrently \"npm run server\" \"npm start\" \"wait-on http://localhost:3000 && electron .\"",
+    "dev": "concurrently \"npm run server\" \"npm start\" \"wait-on http://localhost:3000 && cross-env ELECTRON_IS_DEV=true electron .\"",
     "build-installer": "npm run build && electron-builder --win --x64 --publish=never",
     "build-all": "npm run build && electron-builder --win --mac --linux",
     "postinstall": "electron-builder install-app-deps",
@@ -32,11 +32,17 @@
     "tailwind-init": "npx tailwindcss init -p",
     "start-telemetry": "python python-server/start_server.py",
     "startPy": "concurrently \"npm run start-telemetry\" \"electron .\"",
-    "devPy": "concurrently \"npm run start-telemetry\" \"npm start\" \"wait-on http://localhost:3000 && electron .\"",
+    "devPy": "concurrently \"npm run start-telemetry\" \"npm start\" \"wait-on http://localhost:3000 && cross-env ELECTRON_IS_DEV=true electron .\"",
     "electron": "electron .",
+    "electron:dev": "cross-env ELECTRON_IS_DEV=true electron .",
+    "electron:transparent": "cross-env ELECTRON_IS_DEV=true TRANSPARENT_MODE=true electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
     "installer:prepare": "python installer/pre-build.py",
     "installer:build": "cd installer && build-installer.bat",
-    "installer:full": "npm run build && npm run installer:prepare && npm run installer:build"
+    "installer:full": "npm run build && npm run installer:prepare && npm run installer:build",
+    "publish": "electron-builder --publish=always",
+    "publish:github": "electron-builder --publish=onTagOrDraft"
   },
   "base": "./",
   "build": {
@@ -69,19 +75,22 @@
     }
   },
   "dependencies": {
-    "electron-updater": "^6.1.4",
+    "electron-log": "^5.0.1",
+    "electron-updater": "^6.1.7",
     "lucide-react": "^0.263.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
     "recharts": "^2.8.0",
+    "semver": "^7.5.4",
     "ws": "^8.18.3"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.21",
     "concurrently": "^8.2.2",
-    "electron": "^27.0.0",
-    "electron-builder": "^24.6.4",
+    "cross-env": "^7.0.3",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "wait-on": "^7.0.1"

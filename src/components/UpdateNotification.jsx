@@ -11,28 +11,52 @@ const UpdateNotification = () => {
 
   useEffect(() => {
     // Get current app version
-    if (window.electronAPI) {
-      window.electronAPI.getAppVersion().then((version) => {
-        setCurrentVersion(version);
-      });
+    if (window.electronAPI && window.electronAPI.getAppVersion) {
+      window.electronAPI
+        .getAppVersion()
+        .then((version) => {
+          setCurrentVersion(version);
+        })
+        .catch((error) => {
+          console.error("Failed to get app version:", error);
+          setCurrentVersion("Unknown");
+        });
 
       // Set up auto-updater event listeners
-      window.electronAPI.onUpdateAvailable((event, info) => {
-        setUpdateInfo(info);
-        setUpdateAvailable(true);
-      });
+      if (window.electronAPI.onUpdateAvailable) {
+        window.electronAPI.onUpdateAvailable((event, info) => {
+          setUpdateInfo(info);
+          setUpdateAvailable(true);
+        });
+      }
 
-      window.electronAPI.onDownloadProgress((event, progressObj) => {
-        setDownloadProgress(Math.round(progressObj.percent));
-      });
+      if (window.electronAPI.onDownloadProgress) {
+        window.electronAPI.onDownloadProgress((event, progressObj) => {
+          setDownloadProgress(Math.round(progressObj.percent));
+        });
+      }
 
-      window.electronAPI.onUpdateDownloaded((event, info) => {
-        setIsDownloading(false);
-        setUpdateDownloaded(true);
-      });
+      if (window.electronAPI.onUpdateDownloaded) {
+        window.electronAPI.onUpdateDownloaded((event, info) => {
+          setIsDownloading(false);
+          setUpdateDownloaded(true);
+        });
+      }
+
+      if (window.electronAPI.onUpdateError) {
+        window.electronAPI.onUpdateError((event, error) => {
+          console.error("Update error:", error);
+          setIsDownloading(false);
+        });
+      }
 
       // Check for updates on component mount
-      window.electronAPI.checkForUpdates();
+      if (window.electronAPI.checkForUpdates) {
+        window.electronAPI.checkForUpdates();
+      }
+    } else {
+      console.log("Electron API not available - running in browser mode");
+      setCurrentVersion("Browser Mode");
     }
 
     return () => {
@@ -46,6 +70,11 @@ const UpdateNotification = () => {
   }, []);
 
   const handleDownloadUpdate = async () => {
+    if (!window.electronAPI || !window.electronAPI.downloadUpdate) {
+      console.error("Download update API not available");
+      return;
+    }
+
     setIsDownloading(true);
     setDownloadProgress(0);
     try {
@@ -57,6 +86,11 @@ const UpdateNotification = () => {
   };
 
   const handleInstallUpdate = async () => {
+    if (!window.electronAPI || !window.electronAPI.installUpdate) {
+      console.error("Install update API not available");
+      return;
+    }
+
     try {
       await window.electronAPI.installUpdate();
     } catch (error) {

@@ -1,0 +1,73 @@
+{
+  "name": "gt3-ai-coaching",
+  "version": "1.0.0",
+  "description": "Real-time AI coaching for GT3 racing in iRacing",
+  "main": "public/electron.js",
+  "homepage": "./",
+  "author": "GT3 Racing Solutions",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "electron-updater": "^6.1.7",
+    "electron-log": "^5.0.1",
+    "semver": "^7.5.4"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "dev": "electron . --dev",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "postinstall": "electron-builder install-app-deps",
+    
+    "installer:prepare": "python installer/pre-build.py",
+    "installer:build": "cd installer && build-installer.bat",
+    "installer:full": "npm run build && npm run installer:prepare && npm run installer:build",
+    
+    "publish": "electron-builder --publish=always",
+    "publish:github": "electron-builder --publish=onTagOrDraft"
+  },
+  "build": {
+    "appId": "com.gt3racing.ai-coaching",
+    "productName": "GT3 AI Coaching",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "build/**/*",
+      "python-server/**/*",
+      "node_modules/**/*",
+      "public/electron.js",
+      "public/preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "python-server",
+        "to": "python-server"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico",
+      "publisherName": "GT3 Racing Solutions",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "GT3 AI Coaching"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "rechandler",
+      "repo": "gt3-ai-coaching",
+      "private": false
+    }
+  }
+}

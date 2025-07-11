@@ -33,7 +33,10 @@
     "start-telemetry": "python python-server/telemetry-server.py",
     "startPy": "concurrently \"npm run start-telemetry\" \"electron .\"",
     "devPy": "concurrently \"npm run start-telemetry\" \"npm start\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron": "electron ."
+    "electron": "electron .",
+    "installer:prepare": "python installer/pre-build.py",
+    "installer:build": "cd installer && build-installer.bat",
+    "installer:full": "npm run build && npm run installer:prepare && npm run installer:build"
   },
   "base": "./",
   "build": {

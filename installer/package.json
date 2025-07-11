@@ -1,0 +1,20 @@
+{
+  "name": "gt3-ai-coaching-installer",
+  "version": "1.0.0",
+  "description": "Windows installer build scripts for GT3 AI Coaching",
+  "scripts": {
+    "build": "build-installer.bat",
+    "clean": "del /f /q *.exe 2>nul || echo No installer files to clean",
+    "prepare": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "installer",
+    "nsis",
+    "windows",
+    "gt3",
+    "racing",
+    "ai-coaching"
+  ],
+  "author": "GT3 Racing Solutions",
+  "license": "MIT"
+}

@@ -485,6 +485,11 @@ class GT3TelemetryServer:
                 'lapDistPct': 'LapDistPct',
                 'lap': 'Lap',
                 
+                # Delta timing (iRacing native deltas)
+                'lapDeltaToBestLap': 'LapDeltaToBestLap',
+                'lapDeltaToOptimalLap': 'LapDeltaToOptimalLap',
+                'lapDeltaToSessionBestLap': 'LapDeltaToSessionBestLap',
+                
                 # Position and race data
                 'position': 'Position',
                 'classPosition': 'ClassPosition',
@@ -520,22 +525,45 @@ class GT3TelemetryServer:
                     telemetry[field_name] = value
                     data_count += 1
             
-            # Calculate delta time (current lap vs best lap) - but not in pits
-            current_lap_time = self.safe_get_telemetry('LapCurrentLapTime')
-            best_lap_time = self.safe_get_telemetry('LapBestLapTime')
+            # Use iRacing's native delta time (preferred) or calculate fallback
             on_pit_road = self.safe_get_telemetry('OnPitRoad')
-            in_pit_stall = self.safe_get_telemetry('CarIdxOnPitRoad')  # Alternative pit detection
             
-            # Only calculate delta if not in pits and have valid lap times
-            if (current_lap_time is not None and best_lap_time is not None and best_lap_time > 0 
-                and not on_pit_road and (in_pit_stall is None or not in_pit_stall)):
-                telemetry['deltaTime'] = current_lap_time - best_lap_time
+            # Try to use iRacing's native delta fields (most accurate)
+            native_delta = None
+            
+            # Try different delta fields in order of preference
+            delta_fields = ['LapDeltaToBestLap', 'LapDeltaToOptimalLap', 'LapDeltaToSessionBestLap']
+            for delta_field in delta_fields:
+                delta_value = self.safe_get_telemetry(delta_field)
+                if delta_value is not None and abs(delta_value) < 999:  # Valid delta (not 999+ invalid value)
+                    native_delta = delta_value
+                    logger.debug(f"Using native delta from {delta_field}: {delta_value:.3f}")
+                    break
+            
+            # Set delta time
+            if not on_pit_road and native_delta is not None:
+                telemetry['deltaTime'] = native_delta
+                telemetry['deltaSource'] = 'iRacing_native'
                 data_count += 1
+            elif not on_pit_road:
+                # Fallback: calculate delta if native isn't available
+                current_lap_time = self.safe_get_telemetry('LapCurrentLapTime')
+                best_lap_time = self.safe_get_telemetry('LapBestLapTime')
+                
+                if (current_lap_time is not None and best_lap_time is not None and best_lap_time > 0):
+                    telemetry['deltaTime'] = current_lap_time - best_lap_time
+                    telemetry['deltaSource'] = 'calculated_fallback'
+                    logger.debug(f"Using calculated delta: {telemetry['deltaTime']:.3f}")
+                    data_count += 1
+                else:
+                    telemetry['deltaTime'] = None
+                    telemetry['deltaSource'] = 'unavailable'
+                    data_count += 1
             else:
-                # In pits or invalid lap time - don't show delta
+                # In pits - don't show delta
                 telemetry['deltaTime'] = None
-                if on_pit_road:
-                    logger.debug("In pits - delta time disabled")
+                telemetry['deltaSource'] = 'in_pits'
+                logger.debug("In pits - delta time disabled")
                 data_count += 1
             
             # Get car and track information - improved fallback system

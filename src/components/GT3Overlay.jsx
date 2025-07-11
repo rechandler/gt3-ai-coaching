@@ -271,7 +271,7 @@ const GT3OverlaySystem = () => {
     const hasDelta =
       telemetryData?.deltaTime !== null &&
       telemetryData?.deltaTime !== undefined;
-    const deltaSource = telemetryData?.deltaSource || 'unknown';
+    const deltaSource = telemetryData?.deltaSource || "unknown";
 
     return (
       <div className="text-center">
@@ -296,15 +296,11 @@ const GT3OverlaySystem = () => {
           {isInPits ? "In Pits" : "Delta Time"}
         </div>
         {/* Show delta source for debugging/verification */}
-        {deltaSource === 'iRacing_native' && (
-          <div className="text-xs text-green-500 mt-1">
-            iRacing Native
-          </div>
+        {deltaSource === "iRacing_native" && (
+          <div className="text-xs text-green-500 mt-1">iRacing Native</div>
         )}
-        {deltaSource === 'calculated_fallback' && (
-          <div className="text-xs text-yellow-500 mt-1">
-            Calculated
-          </div>
+        {deltaSource === "calculated_fallback" && (
+          <div className="text-xs text-yellow-500 mt-1">Calculated</div>
         )}
         {telemetryData?.lapBestLapTime && !isInPits && (
           <div className="text-xs text-gray-500 mt-1">
@@ -312,13 +308,14 @@ const GT3OverlaySystem = () => {
           </div>
         )}
         {/* Show additional delta fields if available */}
-        {telemetryData?.lapDeltaToOptimalLap !== null && 
-         telemetryData?.lapDeltaToOptimalLap !== undefined && 
-         !isInPits && (
-          <div className="text-xs text-blue-400 mt-1">
-            Optimal: {telemetryData.lapDeltaToOptimalLap >= 0 ? '+' : ''}{telemetryData.lapDeltaToOptimalLap.toFixed(3)}
-          </div>
-        )}
+        {telemetryData?.lapDeltaToOptimalLap !== null &&
+          telemetryData?.lapDeltaToOptimalLap !== undefined &&
+          !isInPits && (
+            <div className="text-xs text-blue-400 mt-1">
+              Optimal: {telemetryData.lapDeltaToOptimalLap >= 0 ? "+" : ""}
+              {telemetryData.lapDeltaToOptimalLap.toFixed(3)}
+            </div>
+          )}
       </div>
     );
   };

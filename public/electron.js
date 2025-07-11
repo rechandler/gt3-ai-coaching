@@ -34,6 +34,9 @@ function createOverlayWindow() {
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
+    focusable: false, // Prevent stealing focus from the game
+    visibleOnAllWorkspaces: true, // Ensure visibility across workspaces
+    fullscreenable: false, // Prevent accidental fullscreen
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -64,6 +67,25 @@ function createOverlayWindow() {
   
   overlayWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error('Failed to load overlay:', errorCode, errorDescription);
+  });
+
+  // Ensure overlay stays on top, especially important for fullscreen games
+  const ensureAlwaysOnTop = () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+      // For Windows, also set additional flags to ensure visibility over fullscreen apps
+      if (process.platform === 'win32') {
+        overlayWindow.setVisibleOnAllWorkspaces(true);
+      }
+    }
+  };
+
+  // Check every 5 seconds to ensure overlay stays on top
+  const alwaysOnTopInterval = setInterval(ensureAlwaysOnTop, 5000);
+  
+  // Clean up interval when window is closed
+  overlayWindow.on('closed', () => {
+    clearInterval(alwaysOnTopInterval);
   });
 }
 

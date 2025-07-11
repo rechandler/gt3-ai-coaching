@@ -148,14 +148,16 @@ const DraggableWidget = ({
   return (
     <div
       ref={widgetRef}
-      className={`fixed bg-black bg-opacity-80 backdrop-blur-sm border border-gray-600 rounded-lg shadow-lg transition-all duration-200 ${
+      className={`fixed bg-black bg-opacity-80 backdrop-blur-sm border border-gray-600 rounded-lg shadow-lg transition-all duration-200 draggable-widget ${
         isDragging ? "cursor-grabbing shadow-xl scale-105" : "cursor-grab"
       }`}
       style={{
         left: position.x,
         top: position.y,
-        zIndex: 1000,
+        zIndex: 2147483647, // Maximum z-index value to ensure always on top
         minWidth: "200px",
+        pointerEvents: "auto", // Ensure widgets can receive mouse events
+        position: "fixed", // Ensure fixed positioning works in fullscreen
       }}
       onMouseDown={handleMouseDown}
     >
@@ -571,8 +573,14 @@ const GT3OverlaySystem = () => {
   };
 
   return (
-    <div className="min-h-screen bg-transparent">
-      <div className="fixed top-4 right-4 z-50 flex items-center space-x-2">
+    <div
+      className="min-h-screen bg-transparent"
+      style={{ pointerEvents: "none" }}
+    >
+      <div
+        className="fixed top-4 right-4 z-50 flex items-center space-x-2"
+        style={{ zIndex: 2147483647, pointerEvents: "auto" }}
+      >
         <div
           className={`flex items-center space-x-2 px-3 py-1 rounded-full ${
             isConnected ? "bg-green-600" : "bg-red-600"
@@ -592,7 +600,10 @@ const GT3OverlaySystem = () => {
       </div>
 
       {showSettings && (
-        <div className="fixed top-16 right-4 z-50 bg-gray-800 bg-opacity-90 backdrop-blur-sm border border-gray-600 rounded-lg p-4 min-w-64">
+        <div
+          className="fixed top-16 right-4 z-50 bg-gray-800 bg-opacity-90 backdrop-blur-sm border border-gray-600 rounded-lg p-4 min-w-64"
+          style={{ zIndex: 2147483647, pointerEvents: "auto" }}
+        >
           <h3 className="text-lg font-bold text-white mb-4">Widget Settings</h3>
           <div className="space-y-3">
             {Object.entries(widgetVisibility).map(([widgetId, isVisible]) => (

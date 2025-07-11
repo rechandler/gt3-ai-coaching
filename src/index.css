@@ -9,6 +9,13 @@ body {
   background: transparent;
   overflow: hidden;
   color: white;
+  /* Ensure body works in fullscreen mode */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 2147483647;
 }
 
 * {
@@ -18,6 +25,19 @@ body {
 #root {
   width: 100vw;
   height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483647;
+  pointer-events: none; /* Allow clicks to pass through to game */
+}
+
+/* Ensure interactive elements can still receive clicks */
+.widget-content,
+button,
+[role="button"],
+.draggable-widget {
+  pointer-events: auto !important;
 }
 
 /* Scrollbar styling for widgets */

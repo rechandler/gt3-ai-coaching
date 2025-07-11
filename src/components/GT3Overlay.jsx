@@ -33,6 +33,20 @@ const useIRacingTelemetry = () => {
 
             // Handle different message types
             if (message.type === "Telemetry" && message.data) {
+              // Add specific delta time debugging
+              if (
+                message.data.deltaTime !== undefined ||
+                message.data.deltaType !== undefined
+              ) {
+                console.log("Delta data:", {
+                  deltaTime: message.data.deltaTime,
+                  deltaType: message.data.deltaType,
+                  onPitRoad: message.data.onPitRoad,
+                  lapCurrentLapTime: message.data.lapCurrentLapTime,
+                  lapBestLapTime: message.data.lapBestLapTime,
+                });
+              }
+
               // Add specific fuel debugging
               if (
                 message.data.fuelLevel !== undefined ||
@@ -182,6 +196,14 @@ const GT3OverlaySystem = () => {
   const { telemetryData, isConnected } = useIRacingTelemetry();
   const [showSettings, setShowSettings] = useState(false);
 
+  // AI Coaching message management
+  const [coachingMessages, setCoachingMessages] = useState([]);
+  const [messageHistory, setMessageHistory] = useState(new Set());
+  const messageTimersRef = useRef({});
+
+  const MIN_MESSAGE_DISPLAY_TIME = 5000; // 5 seconds minimum display
+  const MAX_MESSAGES = 3; // Maximum number of messages to display at once
+
   const [widgetPositions, setWidgetPositions] = useState({
     deltaTime: { x: 50, y: 50 },
     tireTemps: { x: 300, y: 50 },
@@ -274,31 +296,40 @@ const GT3OverlaySystem = () => {
       telemetryData?.deltaTime !== null &&
       telemetryData?.deltaTime !== undefined;
 
+    const deltaType = telemetryData?.deltaType || "unknown";
+    const deltaValue = telemetryData?.deltaTime;
+
     return (
       <div className="text-center">
         <div
           className={`text-4xl font-bold ${
             isInPits
               ? "text-gray-500"
-              : hasDelta && telemetryData.deltaTime < 0
+              : hasDelta && deltaValue < 0
               ? "text-green-400"
-              : "text-red-400"
+              : hasDelta && deltaValue > 0
+              ? "text-red-400"
+              : "text-gray-400"
           }`}
         >
           {isInPits
             ? "PIT"
             : hasDelta
-            ? `${
-                telemetryData.deltaTime >= 0 ? "+" : ""
-              }${telemetryData.deltaTime.toFixed(3)}`
+            ? `${deltaValue >= 0 ? "+" : ""}${deltaValue.toFixed(3)}`
             : "0.000"}
         </div>
         <div className="text-sm text-gray-400">
-          {isInPits ? "In Pits" : "Delta Time"}
+          {isInPits ? "In Pits" : `Delta Time (${deltaType})`}
         </div>
         {telemetryData?.lapBestLapTime && !isInPits && (
           <div className="text-xs text-gray-500 mt-1">
             Best: {telemetryData.lapBestLapTime.toFixed(3)}s
+          </div>
+        )}
+        {/* Debug info - remove this once delta is working */}
+        {!isInPits && !hasDelta && (
+          <div className="text-xs text-red-400 mt-1">
+            No delta data (type: {deltaType})
           </div>
         )}
       </div>
@@ -457,9 +488,23 @@ const GT3OverlaySystem = () => {
   );
 
   const CoachingWidget = () => {
-    const priority = telemetryData?.coachingPriority || 0;
-    const category = telemetryData?.coachingCategory || "general";
-    const confidence = telemetryData?.coachingConfidence || 100;
+    // If we have managed messages, display them; otherwise fall back to real-time data
+    const displayMessages = coachingMessages.length > 0 ? coachingMessages : [];
+
+    // For the main display, use the highest priority message or the most recent
+    const primaryMessage =
+      displayMessages.length > 0
+        ? displayMessages.reduce((highest, current) =>
+            current.priority > highest.priority ? current : highest
+          )
+        : null;
+
+    const category =
+      primaryMessage?.category || telemetryData?.coachingCategory || "general";
+    const priority =
+      primaryMessage?.priority || telemetryData?.coachingPriority || 0;
+    const confidence =
+      primaryMessage?.confidence || telemetryData?.coachingConfidence || 100;
 
     return (
       <div
@@ -472,16 +517,62 @@ const GT3OverlaySystem = () => {
           <div className="flex items-center space-x-2">
             <span className="text-sm font-medium text-blue-300">AI Coach</span>
             <span className="text-xs">{getCategoryIcon(category)}</span>
+            {displayMessages.length > 1 && (
+              <span className="text-xs bg-blue-600 text-white px-1 rounded">
+                {displayMessages.length}
+              </span>
+            )}
           </div>
           <div className="text-xs text-gray-400">{confidence}% confident</div>
         </div>
+
+        {/* Primary message */}
         <div className="text-sm text-white mt-1">
-          {telemetryData?.coachingMessage ||
+          {primaryMessage?.message ||
+            telemetryData?.coachingMessage ||
             (isConnected
               ? "Analyzing..."
               : "Waiting for iRacing connection...")}
         </div>
-        {telemetryData?.secondaryMessages &&
+
+        {/* Additional messages */}
+        {displayMessages.length > 1 && (
+          <div className="mt-2 space-y-1 max-h-24 overflow-y-auto">
+            {displayMessages
+              .filter((msg) => msg.id !== primaryMessage?.id)
+              .slice(0, 2) // Show up to 2 additional messages
+              .map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`text-xs rounded px-2 py-1 ${
+                    msg.isSecondary
+                      ? "text-gray-300 bg-gray-800 bg-opacity-50"
+                      : "text-yellow-300 bg-yellow-900 bg-opacity-30"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="flex-1">
+                      {getCategoryIcon(msg.category)} {msg.message}
+                    </span>
+                    <span
+                      className={`text-xs ml-2 ${
+                        currentTime - msg.timestamp >
+                        MIN_MESSAGE_DISPLAY_TIME * 0.8
+                          ? "text-orange-400" // Message about to expire
+                          : "opacity-60"
+                      }`}
+                    >
+                      {Math.floor((currentTime - msg.timestamp) / 1000)}s
+                    </span>
+                  </div>
+                </div>
+              ))}
+          </div>
+        )}
+
+        {/* Fallback to secondary messages from telemetry if no managed messages */}
+        {displayMessages.length === 0 &&
+          telemetryData?.secondaryMessages &&
           telemetryData.secondaryMessages.length > 0 && (
             <div className="mt-2 space-y-1">
               {telemetryData.secondaryMessages.slice(0, 2).map((msg, index) => (
@@ -572,6 +663,122 @@ const GT3OverlaySystem = () => {
     );
   };
 
+  // Add real-time timestamp updates for messages
+  const [currentTime, setCurrentTime] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000); // Update every second
+
+    return () => clearInterval(timer);
+  }, []);
+
+  // Handle new coaching messages from telemetry
+  useEffect(() => {
+    if (telemetryData?.coachingMessage) {
+      const newMessage = {
+        id: Date.now() + Math.random(), // Unique ID
+        message: telemetryData.coachingMessage,
+        category: telemetryData.coachingCategory || "general",
+        priority: telemetryData.coachingPriority || 0,
+        confidence: telemetryData.coachingConfidence || 100,
+        timestamp: Date.now(),
+        hash: `${telemetryData.coachingMessage}_${telemetryData.coachingCategory}`, // For duplicate detection
+      };
+
+      // Check if this message is a duplicate
+      if (!messageHistory.has(newMessage.hash)) {
+        setCoachingMessages((prev) => {
+          // Add new message
+          const updated = [...prev, newMessage];
+
+          // Keep only the most recent MAX_MESSAGES
+          if (updated.length > MAX_MESSAGES) {
+            updated.shift(); // Remove oldest message
+          }
+
+          return updated;
+        });
+
+        // Add to history to prevent duplicates
+        setMessageHistory((prev) => new Set([...prev, newMessage.hash]));
+
+        // Set timer to remove message after minimum display time
+        messageTimersRef.current[newMessage.id] = setTimeout(() => {
+          setCoachingMessages((prev) =>
+            prev.filter((msg) => msg.id !== newMessage.id)
+          );
+          delete messageTimersRef.current[newMessage.id];
+        }, MIN_MESSAGE_DISPLAY_TIME);
+      }
+    }
+  }, [
+    telemetryData?.coachingMessage,
+    telemetryData?.coachingCategory,
+    telemetryData?.coachingPriority,
+  ]);
+
+  // Handle secondary messages
+  useEffect(() => {
+    if (
+      telemetryData?.secondaryMessages &&
+      telemetryData.secondaryMessages.length > 0
+    ) {
+      telemetryData.secondaryMessages.forEach((secondaryMsg) => {
+        const newMessage = {
+          id: Date.now() + Math.random(),
+          message: secondaryMsg.message,
+          category: secondaryMsg.category || "general",
+          priority: secondaryMsg.priority || 0,
+          confidence: secondaryMsg.confidence || 100,
+          timestamp: Date.now(),
+          hash: `${secondaryMsg.message}_${secondaryMsg.category}`,
+          isSecondary: true,
+        };
+
+        // Check for duplicates
+        if (!messageHistory.has(newMessage.hash)) {
+          setCoachingMessages((prev) => {
+            const updated = [...prev, newMessage];
+            if (updated.length > MAX_MESSAGES) {
+              updated.shift();
+            }
+            return updated;
+          });
+
+          setMessageHistory((prev) => new Set([...prev, newMessage.hash]));
+
+          // Shorter display time for secondary messages
+          messageTimersRef.current[newMessage.id] = setTimeout(() => {
+            setCoachingMessages((prev) =>
+              prev.filter((msg) => msg.id !== newMessage.id)
+            );
+            delete messageTimersRef.current[newMessage.id];
+          }, MIN_MESSAGE_DISPLAY_TIME * 0.8); // 4 seconds for secondary messages
+        }
+      });
+    }
+  }, [telemetryData?.secondaryMessages]);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(messageTimersRef.current).forEach((timer) =>
+        clearTimeout(timer)
+      );
+    };
+  }, []);
+
+  // Clear old message hashes periodically to prevent memory buildup
+  useEffect(() => {
+    const clearHistory = setInterval(() => {
+      setMessageHistory(new Set()); // Clear duplicate detection history every 5 minutes
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(clearHistory);
+  }, []);
+
   return (
     <div
       className="min-h-screen bg-transparent"
@@ -624,6 +831,7 @@ const GT3OverlaySystem = () => {
               </div>
             ))}
           </div>
+
           <div className="mt-4 pt-4 border-t border-gray-600">
             <button
               onClick={resetPositions}

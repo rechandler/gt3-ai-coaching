@@ -1,9 +1,10 @@
-# Fullscreen Mode & Delta Time Fix for GT3 AI Coaching Overlay
+# Fullscreen Mode, Delta Time & Widget Updates for GT3 AI Coaching Overlay
 
 ## Problems Addressed
 
 1. **Fullscreen Mode**: When using Alt+Enter in iRacing to enter fullscreen borderless mode, the overlay widgets were not visible or interactive.
 2. **Delta Time Not Working**: The delta time widget was showing "0.000" instead of actual delta time values.
+3. **Removed Unavailable Data**: Tire temperature and brake temperature widgets removed as iRacing doesn't provide this data through their telemetry API.
 
 ## Solutions Applied
 
@@ -53,6 +54,14 @@
 - Better color coding: Green for negative (faster), Red for positive (slower)
 - Shows delta type in the widget subtitle
 - Handles edge cases when no best lap is set yet
+
+### 3. Widget Cleanup
+
+#### Removed Unavailable Widgets
+
+- **Tire Temperature Widget**: Removed as iRacing doesn't provide tire temperature data through their telemetry API
+- **Brake Temperature Widget**: Removed as iRacing doesn't provide brake temperature data through their telemetry API
+- **Reorganized Layout**: Remaining widgets repositioned for better screen utilization
 
 ## How to Test
 
@@ -107,6 +116,15 @@ If delta time shows "0.000" or "No delta data":
 - **Auto-Expiration**: Messages automatically disappear after their display time
 - **Message Counter**: Shows number of active messages when multiple are present
 - **Timestamp Display**: Shows how long each message has been displayed with expiration warning
+
+### Fuel Widget Improvements
+
+- **Accurate Lap Calculation**: Uses actual fuel consumption data from completed laps
+- **Multiple Calculation Methods**: Falls back through 5 different calculation methods for accuracy
+- **Real-Time Tracking**: Monitors fuel usage per lap and adapts to your driving style
+- **Session Learning**: Calculates session average fuel consumption for better estimates
+- **Debug Information**: Shows fuel per lap and calculation method used
+- **Smart Filtering**: Ignores unrealistic fuel usage data (pit stops, anomalies)
 
 ### Performance Optimizations
 

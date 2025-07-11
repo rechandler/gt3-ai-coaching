@@ -56,6 +56,9 @@ const useIRacingTelemetry = () => {
                   fuelLevel: message.data.fuelLevel,
                   fuelLevelPct: message.data.fuelLevelPct,
                   fuelUsePerHour: message.data.fuelUsePerHour,
+                  lap: message.data.lap,
+                  lapLastLapTime: message.data.lapLastLapTime,
+                  lapCurrentLapTime: message.data.lapCurrentLapTime,
                 });
               }
 
@@ -201,25 +204,31 @@ const GT3OverlaySystem = () => {
   const [messageHistory, setMessageHistory] = useState(new Set());
   const messageTimersRef = useRef({});
 
+  // Fuel consumption tracking
+  const [fuelHistory, setFuelHistory] = useState([]);
+  const [lapFuelData, setLapFuelData] = useState([]);
+  const fuelTrackingRef = useRef({
+    lastFuelLevel: null,
+    lastLap: null,
+    sessionStartFuel: null,
+    totalLapsCompleted: 0,
+  });
+
   const MIN_MESSAGE_DISPLAY_TIME = 5000; // 5 seconds minimum display
   const MAX_MESSAGES = 3; // Maximum number of messages to display at once
 
   const [widgetPositions, setWidgetPositions] = useState({
     deltaTime: { x: 50, y: 50 },
-    tireTemps: { x: 300, y: 50 },
-    fuel: { x: 550, y: 50 },
-    brakeTemps: { x: 50, y: 300 },
-    coaching: { x: 300, y: 300 },
-    speedGear: { x: 550, y: 300 },
-    sessionInfo: { x: 50, y: 500 },
-    userProfile: { x: 800, y: 50 },
+    fuel: { x: 300, y: 50 },
+    coaching: { x: 550, y: 50 },
+    speedGear: { x: 50, y: 300 },
+    sessionInfo: { x: 300, y: 300 },
+    userProfile: { x: 550, y: 300 },
   });
 
   const [widgetVisibility, setWidgetVisibility] = useState({
     deltaTime: true,
-    tireTemps: true,
     fuel: true,
-    brakeTemps: true,
     coaching: true,
     speedGear: true,
     sessionInfo: true,
@@ -243,29 +252,12 @@ const GT3OverlaySystem = () => {
   const resetPositions = () => {
     setWidgetPositions({
       deltaTime: { x: 50, y: 50 },
-      tireTemps: { x: 300, y: 50 },
-      fuel: { x: 550, y: 50 },
-      brakeTemps: { x: 50, y: 300 },
-      coaching: { x: 300, y: 300 },
-      speedGear: { x: 550, y: 300 },
-      sessionInfo: { x: 50, y: 500 },
-      userProfile: { x: 800, y: 50 },
+      fuel: { x: 300, y: 50 },
+      coaching: { x: 550, y: 50 },
+      speedGear: { x: 50, y: 300 },
+      sessionInfo: { x: 300, y: 300 },
+      userProfile: { x: 550, y: 300 },
     });
-  };
-
-  const getTireColor = (temp) => {
-    if (!temp) return "#6B7280";
-    if (temp < 175) return "#3B82F6";
-    if (temp < 200) return "#10B981";
-    if (temp < 250) return "#F59E0B";
-    return "#EF4444";
-  };
-
-  const getBrakeColor = (temp) => {
-    if (!temp) return "#6B7280";
-    if (temp < 800) return "#10B981";
-    if (temp < 1200) return "#F59E0B";
-    return "#EF4444";
   };
 
   const getCoachingColor = (category, priority) => {
@@ -336,83 +328,90 @@ const GT3OverlaySystem = () => {
     );
   };
 
-  const TireTempsWidget = () => (
-    <div className="grid grid-cols-2 gap-2">
-      <div className="text-center">
-        <div
-          className="w-12 h-12 rounded-full flex items-center justify-center text-white text-xs font-bold mx-auto"
-          style={{ backgroundColor: getTireColor(telemetryData?.tireTempLF) }}
-        >
-          {telemetryData?.tireTempLF
-            ? telemetryData.tireTempLF.toFixed(0)
-            : "--"}
-        </div>
-        <div className="text-xs text-gray-400 mt-1">FL</div>
-      </div>
-      <div className="text-center">
-        <div
-          className="w-12 h-12 rounded-full flex items-center justify-center text-white text-xs font-bold mx-auto"
-          style={{ backgroundColor: getTireColor(telemetryData?.tireTempRF) }}
-        >
-          {telemetryData?.tireTempRF
-            ? telemetryData.tireTempRF.toFixed(0)
-            : "--"}
-        </div>
-        <div className="text-xs text-gray-400 mt-1">FR</div>
-      </div>
-      <div className="text-center">
-        <div
-          className="w-12 h-12 rounded-full flex items-center justify-center text-white text-xs font-bold mx-auto"
-          style={{ backgroundColor: getTireColor(telemetryData?.tireTempLR) }}
-        >
-          {telemetryData?.tireTempLR
-            ? telemetryData.tireTempLR.toFixed(0)
-            : "--"}
-        </div>
-        <div className="text-xs text-gray-400 mt-1">RL</div>
-      </div>
-      <div className="text-center">
-        <div
-          className="w-12 h-12 rounded-full flex items-center justify-center text-white text-xs font-bold mx-auto"
-          style={{ backgroundColor: getTireColor(telemetryData?.tireTempRR) }}
-        >
-          {telemetryData?.tireTempRR
-            ? telemetryData.tireTempRR.toFixed(0)
-            : "--"}
-        </div>
-        <div className="text-xs text-gray-400 mt-1">RR</div>
-      </div>
-    </div>
-  );
-
   const FuelWidget = () => {
-    // Calculate laps remaining more accurately
-    // We need fuel use per lap, not per hour
-    // If we have current lap time and fuel use per hour, we can estimate
     let lapsRemaining = "--";
+    let fuelPerLap = 0;
+    let calculationMethod = "unknown";
 
-    if (
-      telemetryData?.fuelLevel &&
-      telemetryData?.fuelUsePerHour &&
-      telemetryData?.lapLastLapTime
-    ) {
-      // Convert lap time from seconds to hours for calculation
-      const lapTimeHours = telemetryData.lapLastLapTime / 3600;
-      const fuelPerLap = telemetryData.fuelUsePerHour * lapTimeHours;
+    if (telemetryData?.fuelLevel) {
+      const currentFuel = telemetryData.fuelLevel;
 
-      if (fuelPerLap > 0) {
-        lapsRemaining = (telemetryData.fuelLevel / fuelPerLap).toFixed(1);
+      // Method 1: Use actual lap fuel consumption data (most accurate)
+      if (lapFuelData.length >= 2) {
+        // Calculate average fuel per lap from recent laps
+        const recentLaps = lapFuelData.slice(-5); // Use last 5 laps
+        const avgFuelPerLap =
+          recentLaps.reduce((sum, lap) => sum + lap.fuelUsed, 0) /
+          recentLaps.length;
+
+        if (avgFuelPerLap > 0) {
+          fuelPerLap = avgFuelPerLap;
+          lapsRemaining = (currentFuel / avgFuelPerLap).toFixed(1);
+          calculationMethod = `avg(${recentLaps.length} laps)`;
+        }
       }
-    } else if (telemetryData?.fuelLevel && telemetryData?.fuelUsePerHour) {
-      // Fallback: estimate based on 90-second laps (typical for many tracks)
-      const estimatedLapTimeHours = 90 / 3600; // 90 seconds in hours
-      const estimatedFuelPerLap =
-        telemetryData.fuelUsePerHour * estimatedLapTimeHours;
 
-      if (estimatedFuelPerLap > 0) {
-        lapsRemaining = (telemetryData.fuelLevel / estimatedFuelPerLap).toFixed(
-          1
-        );
+      // Method 2: Use session average if we have lap data but not enough recent data
+      else if (
+        fuelTrackingRef.current.totalLapsCompleted > 0 &&
+        fuelTrackingRef.current.sessionStartFuel
+      ) {
+        const totalFuelUsed =
+          fuelTrackingRef.current.sessionStartFuel - currentFuel;
+        const sessionAvgFuelPerLap =
+          totalFuelUsed / fuelTrackingRef.current.totalLapsCompleted;
+
+        if (sessionAvgFuelPerLap > 0) {
+          fuelPerLap = sessionAvgFuelPerLap;
+          lapsRemaining = (currentFuel / sessionAvgFuelPerLap).toFixed(1);
+          calculationMethod = `session avg`;
+        }
+      }
+
+      // Method 3: Use iRacing's fuel use per hour with current lap time (fallback)
+      else if (
+        telemetryData?.fuelUsePerHour &&
+        telemetryData?.lapLastLapTime &&
+        telemetryData.lapLastLapTime > 0
+      ) {
+        const lapTimeHours = telemetryData.lapLastLapTime / 3600;
+        const estimatedFuelPerLap = telemetryData.fuelUsePerHour * lapTimeHours;
+
+        if (estimatedFuelPerLap > 0) {
+          fuelPerLap = estimatedFuelPerLap;
+          lapsRemaining = (currentFuel / estimatedFuelPerLap).toFixed(1);
+          calculationMethod = "last lap";
+        }
+      }
+
+      // Method 4: Use current lap time if available
+      else if (
+        telemetryData?.fuelUsePerHour &&
+        telemetryData?.lapCurrentLapTime &&
+        telemetryData.lapCurrentLapTime > 0
+      ) {
+        const lapTimeHours = telemetryData.lapCurrentLapTime / 3600;
+        const estimatedFuelPerLap = telemetryData.fuelUsePerHour * lapTimeHours;
+
+        if (estimatedFuelPerLap > 0) {
+          fuelPerLap = estimatedFuelPerLap;
+          lapsRemaining = (currentFuel / estimatedFuelPerLap).toFixed(1);
+          calculationMethod = "current lap";
+        }
+      }
+
+      // Method 5: Fallback with track-based estimates
+      else if (telemetryData?.fuelUsePerHour) {
+        // Get best lap time for better estimation
+        const bestLapTime = telemetryData?.lapBestLapTime || 90; // Default to 90 seconds
+        const lapTimeHours = bestLapTime / 3600;
+        const estimatedFuelPerLap = telemetryData.fuelUsePerHour * lapTimeHours;
+
+        if (estimatedFuelPerLap > 0) {
+          fuelPerLap = estimatedFuelPerLap;
+          lapsRemaining = (currentFuel / estimatedFuelPerLap).toFixed(1);
+          calculationMethod = "estimated";
+        }
       }
     }
 
@@ -428,64 +427,17 @@ const GT3OverlaySystem = () => {
             style={{ width: `${(telemetryData?.fuelLevelPct || 0) * 100}%` }}
           />
         </div>
-        <div className="text-xs text-gray-400 mt-1">{lapsRemaining} laps</div>
+        <div className="text-xs text-gray-400 mt-1">
+          {lapsRemaining} laps
+          {fuelPerLap > 0 && (
+            <div className="text-xs text-gray-500 mt-0.5">
+              {fuelPerLap.toFixed(2)} gal/lap ({calculationMethod})
+            </div>
+          )}
+        </div>
       </div>
     );
   };
-
-  const BrakeTempsWidget = () => (
-    <div className="space-y-2">
-      <div className="flex justify-between">
-        <span className="text-sm">FL</span>
-        <span
-          className="text-sm font-bold"
-          style={{ color: getBrakeColor(telemetryData?.brakeTempLF) }}
-        >
-          {telemetryData?.brakeTempLF
-            ? telemetryData.brakeTempLF.toFixed(0)
-            : "--"}
-          °F
-        </span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-sm">FR</span>
-        <span
-          className="text-sm font-bold"
-          style={{ color: getBrakeColor(telemetryData?.brakeTempRF) }}
-        >
-          {telemetryData?.brakeTempRF
-            ? telemetryData.brakeTempRF.toFixed(0)
-            : "--"}
-          °F
-        </span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-sm">RL</span>
-        <span
-          className="text-sm font-bold"
-          style={{ color: getBrakeColor(telemetryData?.brakeTempLR) }}
-        >
-          {telemetryData?.brakeTempLR
-            ? telemetryData.brakeTempLR.toFixed(0)
-            : "--"}
-          °F
-        </span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-sm">RR</span>
-        <span
-          className="text-sm font-bold"
-          style={{ color: getBrakeColor(telemetryData?.brakeTempRR) }}
-        >
-          {telemetryData?.brakeTempRR
-            ? telemetryData.brakeTempRR.toFixed(0)
-            : "--"}
-          °F
-        </span>
-      </div>
-      <div className="text-xs text-gray-400 text-center">Brake Temps</div>
-    </div>
-  );
 
   const CoachingWidget = () => {
     // If we have managed messages, display them; otherwise fall back to real-time data
@@ -779,6 +731,77 @@ const GT3OverlaySystem = () => {
     return () => clearInterval(clearHistory);
   }, []);
 
+  // Track fuel consumption for better lap remaining calculation
+  useEffect(() => {
+    if (telemetryData?.fuelLevel && telemetryData?.lap) {
+      const currentFuel = telemetryData.fuelLevel;
+      const currentLap = telemetryData.lap;
+      const currentTime = Date.now();
+
+      // Initialize session data
+      if (fuelTrackingRef.current.sessionStartFuel === null) {
+        fuelTrackingRef.current.sessionStartFuel = currentFuel;
+        fuelTrackingRef.current.lastFuelLevel = currentFuel;
+        fuelTrackingRef.current.lastLap = currentLap;
+        return;
+      }
+
+      // Detect lap completion (lap number increased)
+      if (
+        currentLap > fuelTrackingRef.current.lastLap &&
+        fuelTrackingRef.current.lastFuelLevel !== null
+      ) {
+        const fuelUsedThisLap =
+          fuelTrackingRef.current.lastFuelLevel - currentFuel;
+
+        // Only record if fuel usage seems reasonable (between 0.1 and 10 gallons per lap)
+        if (fuelUsedThisLap > 0.1 && fuelUsedThisLap < 10) {
+          const newLapData = {
+            lap: currentLap,
+            fuelUsed: fuelUsedThisLap,
+            timestamp: currentTime,
+          };
+
+          console.log(
+            `Lap ${currentLap} completed - Fuel used: ${fuelUsedThisLap.toFixed(
+              3
+            )} gallons`
+          );
+
+          setLapFuelData((prev) => {
+            const updated = [...prev, newLapData];
+            // Keep only the last 10 laps for calculation
+            return updated.slice(-10);
+          });
+
+          fuelTrackingRef.current.totalLapsCompleted = currentLap;
+        } else if (fuelUsedThisLap > 0) {
+          console.log(
+            `Lap ${currentLap} - Unusual fuel usage: ${fuelUsedThisLap.toFixed(
+              3
+            )} gallons (not recorded)`
+          );
+        }
+
+        fuelTrackingRef.current.lastLap = currentLap;
+      }
+
+      // Always update fuel level for next comparison
+      fuelTrackingRef.current.lastFuelLevel = currentFuel;
+
+      // Add fuel level to history (for smoothing)
+      setFuelHistory((prev) => {
+        const updated = [
+          ...prev,
+          { level: currentFuel, timestamp: currentTime },
+        ];
+        // Keep only the last 30 seconds of data
+        const thirtySecondsAgo = currentTime - 30000;
+        return updated.filter((entry) => entry.timestamp > thirtySecondsAgo);
+      });
+    }
+  }, [telemetryData?.fuelLevel, telemetryData?.lap]);
+
   return (
     <div
       className="min-h-screen bg-transparent"
@@ -856,17 +879,6 @@ const GT3OverlaySystem = () => {
       </DraggableWidget>
 
       <DraggableWidget
-        id="tireTemps"
-        title="Tire Temps"
-        position={widgetPositions.tireTemps}
-        onPositionChange={handlePositionChange}
-        isVisible={widgetVisibility.tireTemps}
-        onToggleVisibility={handleToggleVisibility}
-      >
-        <TireTempsWidget />
-      </DraggableWidget>
-
-      <DraggableWidget
         id="fuel"
         title="Fuel"
         position={widgetPositions.fuel}
@@ -875,17 +887,6 @@ const GT3OverlaySystem = () => {
         onToggleVisibility={handleToggleVisibility}
       >
         <FuelWidget />
-      </DraggableWidget>
-
-      <DraggableWidget
-        id="brakeTemps"
-        title="Brake Temps"
-        position={widgetPositions.brakeTemps}
-        onPositionChange={handlePositionChange}
-        isVisible={widgetVisibility.brakeTemps}
-        onToggleVisibility={handleToggleVisibility}
-      >
-        <BrakeTempsWidget />
       </DraggableWidget>
 
       <DraggableWidget

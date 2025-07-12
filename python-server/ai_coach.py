@@ -211,6 +211,11 @@ class LocalAICoach:
         self.track_width_m = 1.9       # Estimated track width
         self.cg_height_m = 0.4         # Estimated center of gravity height
         
+        # Positive Performance Tracking
+        self.corner_personal_bests = defaultdict(float)   # Best speed through each corner
+        self.last_positive_feedback = 0                   # Timing for positive messages
+        self.recent_improvements = deque(maxlen=20)       # Track recent improvements
+        
         logger.info("🤖 Local AI Coach initialized with advanced dynamics analysis - ready to learn your driving style")
     
     def _initialize_corner_names(self) -> Dict[float, str]:
@@ -295,6 +300,9 @@ class LocalAICoach:
             messages.extend(self._generate_gear_shift_coaching(telemetry))
             messages.extend(self._generate_weight_transfer_coaching(telemetry))
             messages.extend(self._generate_g_force_coaching(telemetry))
+            
+            # Positive feedback for good performance
+            messages.extend(self._detect_positive_performance(telemetry))
             
             # Immediate feedback - tire/brake pattern analysis
             messages.extend(self._analyze_tire_management(telemetry))
@@ -2062,5 +2070,47 @@ class LocalAICoach:
                 data_source="high_g_warning",
                 improvement_potential=0.0
             ))
+        
+        return messages
+    
+    def _detect_positive_performance(self, telemetry: Dict[str, Any]) -> List[CoachingMessage]:
+        """Detect and celebrate good driving techniques"""
+        messages = []
+        current_time = time.time()
+        
+        # Only give positive feedback every 15 seconds to avoid spam
+        if current_time - self.last_positive_feedback < 15:
+            return messages
+            
+        speed = telemetry.get('speed', 0)
+        corner = self.current_corner
+        
+        # Track personal bests through corners
+        if corner and speed > 30:  # Valid corner speed
+            if corner not in self.corner_personal_bests or speed > self.corner_personal_bests[corner]:
+                self.corner_personal_bests[corner] = speed
+                messages.append(CoachingMessage(
+                    message=f"🏆 Personal best through {corner}! Great technique!",
+                    category="positive",
+                    priority=7,
+                    confidence=95,
+                    data_source="personal_best"
+                ))
+                self.last_positive_feedback = current_time
+        
+        # Celebrate consistent lap times
+        if len(self.laps) >= 3:
+            recent_times = [lap.lap_time for lap in self.laps[-3:] if lap.lap_time > 0]
+            if len(recent_times) == 3:
+                consistency = np.std(recent_times) / np.mean(recent_times)
+                if consistency < 0.01:  # Very consistent
+                    messages.append(CoachingMessage(
+                        message="🎯 Incredible consistency! Your lap times are within 0.1s!",
+                        category="positive",
+                        priority=6,
+                        confidence=95,
+                        data_source="consistency"
+                    ))
+                    self.last_positive_feedback = current_time
         
         return messages

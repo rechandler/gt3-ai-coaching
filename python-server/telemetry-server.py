@@ -468,6 +468,7 @@ class GT3TelemetryServer:
                 'sessionTime': 'SessionTime',
                 'sessionTick': 'SessionTick', 
                 'sessionFlags': 'SessionFlags',
+                'sessionState': 'SessionState',  # Add session state
                 'paceFlags': 'PaceFlags',
                 
                 # Car performance
@@ -493,6 +494,9 @@ class GT3TelemetryServer:
                 # Position and race data
                 'position': 'Position',
                 'classPosition': 'ClassPosition',
+                
+                # Track and car status
+                'playerTrackSurface': 'PlayerTrackSurface',  # Add track surface
                 
                 # Environmental
                 'trackTempCrew': 'TrackTempCrew',

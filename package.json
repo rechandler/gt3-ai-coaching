@@ -34,6 +34,7 @@
     "start-servers": "start-servers.bat",
     "startPy": "concurrently \"npm run start-telemetry\" \"electron .\"",
     "devPy": "concurrently \"npm run start-servers\" \"npm start\" \"wait-on http://localhost:3000 && cross-env ELECTRON_IS_DEV=true electron .\"",
+    "devui": "concurrently \"npm start\" \"wait-on http://localhost:3000 && cross-env ELECTRON_IS_DEV=true electron .\"",
     "electron": "electron .",
     "electron:dev": "cross-env ELECTRON_IS_DEV=true electron .",
     "electron:transparent": "cross-env ELECTRON_IS_DEV=true TRANSPARENT_MODE=true electron .",

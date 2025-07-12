@@ -658,9 +658,7 @@ const GT3OverlaySystem = () => {
               : "Connecting to AI coach..."}
           </div>
         ) : coachingMessages.length === 0 ? (
-          <div className="text-sm text-gray-400 mt-1">
-            Analyzing your driving...
-          </div>
+          <div className="text-sm text-gray-400">Analyzing your driving...</div>
         ) : (
           <div className="space-y-2">
             {coachingMessages.map((msg, index) => {

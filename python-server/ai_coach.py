@@ -106,6 +106,7 @@ class LocalAICoach:
             messages.extend(self._analyze_tire_management(telemetry))
             messages.extend(self._analyze_brake_usage(telemetry))
             messages.extend(self._analyze_throttle_application(telemetry))
+            messages.extend(self._analyze_track_surface(telemetry))  # Track surface analysis
             
             # General coaching tips (always available)
             messages.extend(self._generate_general_tips(telemetry))
@@ -580,6 +581,90 @@ class LocalAICoach:
                     confidence=90,
                     data_source="lap_comparison"
                 ))
+        
+        return messages
+    
+    def _analyze_track_surface(self, telemetry: Dict[str, Any]) -> List[CoachingMessage]:
+        """Analyze track surface and provide feedback about track position"""
+        messages = []
+        
+        track_surface = telemetry.get('playerTrackSurface', 4)  # Default to on_track
+        speed = telemetry.get('speed', 0)
+        throttle = telemetry.get('throttle', 0)
+        brake = telemetry.get('brake', 0)
+        
+        # Track surface mapping
+        surface_names = {
+            0: "not_in_world",
+            1: "off_track", 
+            2: "in_pit_stall",
+            3: "approaching_pits", 
+            4: "on_track"
+        }
+        
+        surface_name = surface_names.get(track_surface, "unknown")
+        
+        # Analysis for off-track situations
+        if track_surface == 1 and speed > 10:  # Off track at decent speed
+            # Determine likely cause based on inputs
+            if brake > 30:
+                messages.append(CoachingMessage(
+                    message="Went off track under braking - try braking earlier and smoother",
+                    category="braking",
+                    priority=8,
+                    confidence=85,
+                    data_source="track_surface_braking",
+                    improvement_potential=0.2
+                ))
+            elif throttle > 50:
+                messages.append(CoachingMessage(
+                    message="Went off track on throttle - ease into the power to maintain grip",
+                    category="throttle", 
+                    priority=8,
+                    confidence=85,
+                    data_source="track_surface_throttle",
+                    improvement_potential=0.15
+                ))
+            else:
+                # General cornering advice
+                messages.append(CoachingMessage(
+                    message="Went off track in corner - focus on smooth inputs and racing line",
+                    category="racing_line",
+                    priority=7,
+                    confidence=80,
+                    data_source="track_surface_cornering",
+                    improvement_potential=0.1
+                ))
+        
+        # Check recent track surface history for pattern analysis
+        if len(self.telemetry_buffer) >= 30:  # Have half second of data
+            recent_surfaces = [t.get('playerTrackSurface', 4) for t in list(self.telemetry_buffer)[-30:]]
+            off_track_count = sum(1 for surface in recent_surfaces if surface == 1)
+            
+            # If more than 20% of recent samples are off-track, suggest consistency work
+            if off_track_count > 6:  # More than 20% off track in last 30 samples
+                messages.append(CoachingMessage(
+                    message="Multiple track limit violations - focus on consistency over speed",
+                    category="racing_line",
+                    priority=6,
+                    confidence=75,
+                    data_source="track_surface_pattern",
+                    improvement_potential=0.3
+                ))
+        
+        # Positive reinforcement for good track position
+        if track_surface == 4 and speed > 30:  # On track at good speed
+            # Only occasionally give positive feedback to avoid spam
+            if len(self.telemetry_buffer) > 0 and len(self.telemetry_buffer) % 300 == 0:  # Every 5 seconds
+                recent_on_track = [t.get('playerTrackSurface', 4) for t in list(self.telemetry_buffer)[-180:]]  # Last 3 seconds
+                if all(surface == 4 for surface in recent_on_track):
+                    messages.append(CoachingMessage(
+                        message="Good car control - staying on the racing line consistently",
+                        category="racing_line",
+                        priority=3,
+                        confidence=70,
+                        data_source="track_surface_positive"
+                    ))
         
         return messages
     

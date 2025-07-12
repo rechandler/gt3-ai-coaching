@@ -25,7 +25,7 @@ if sys.platform == 'win32':
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout)
@@ -199,6 +199,15 @@ class CoachingServer:
                         if data.get('type') == 'Telemetry' and data.get('data'):
                             telemetry_data = data['data']
                             
+                            # Log key telemetry values for debugging
+                            speed = telemetry_data.get('speed', 0)
+                            session_state = telemetry_data.get('sessionState', 'N/A')
+                            track_surface = telemetry_data.get('playerTrackSurface', 'N/A')
+                            session_flags = telemetry_data.get('sessionFlags', 0)
+                            on_pit_road = telemetry_data.get('onPitRoad', False)
+                            
+                            logger.debug(f"📊 Telemetry: Speed={speed:.1f}, Session={session_state}, Track={track_surface}, Flags=0x{session_flags:08x}, InPits={on_pit_road}")
+                            
                             # Check if we should process coaching (car is actually moving/racing)
                             should_coach = self.should_generate_coaching(telemetry_data)
                             
@@ -271,15 +280,18 @@ class CoachingServer:
     def should_generate_coaching(self, telemetry_data):
         """Determine if we should generate coaching messages based on current conditions"""
         if not telemetry_data:
+            logger.debug("❌ No telemetry data available for coaching")
             return False
         
         # Don't coach if car is in pits
         if telemetry_data.get('onPitRoad', False):
+            logger.debug("❌ Car is in pits - not coaching")
             return False
         
         # Don't coach if car is stationary (speed very low)
         speed = telemetry_data.get('speed', 0)
         if speed < 5:  # Less than 5 MPH
+            logger.debug(f"❌ Speed too low ({speed:.1f} MPH) - not coaching")
             return False
         
         # Don't coach during caution/yellow flag conditions
@@ -287,27 +299,37 @@ class CoachingServer:
         # Check for yellow flag conditions (caution)
         # iRacing session flags: yellow = 0x00100000 (bit 20)
         if session_flags & 0x00100000:  # Yellow flag
+            logger.debug(f"❌ Yellow flag active (flags: 0x{session_flags:08x}) - not coaching")
             return False
         
         # Additional flag checks
         if session_flags & 0x00008000:  # Caution waving
+            logger.debug(f"❌ Caution waving (flags: 0x{session_flags:08x}) - not coaching")
             return False
         
         if session_flags & 0x00010000:  # Caution
+            logger.debug(f"❌ Caution active (flags: 0x{session_flags:08x}) - not coaching")
             return False
         
         # Don't coach if session is not active (practice, qualifying, race)
         session_state = telemetry_data.get('sessionState', 0)
         # SessionState: 0=invalid, 1=get_in_car, 2=warmup, 3=parade_laps, 4=racing, 5=checkered, 6=cool_down
         if session_state not in [2, 3, 4]:  # Only coach during warmup, parade laps, or racing
+            logger.debug(f"❌ Invalid session state ({session_state}) - not coaching (need 2/3/4)")
             return False
         
-        # Don't coach if car is not on track surface
+        # Allow coaching on all track surfaces except not_in_world - we want to give feedback about off-track excursions!
         track_surface = telemetry_data.get('playerTrackSurface', 0)
         # TrackSurface: 0=not_in_world, 1=off_track, 2=in_pit_stall, 3=approaching_pits, 4=on_track
-        if track_surface != 4:  # Only coach when on track
+        if track_surface == 0:  # Only skip coaching when not in world (car not active)
+            logger.debug(f"❌ Car not in world ({track_surface}) - not coaching")
             return False
         
+        # Create descriptive track surface message for logging
+        surface_names = {0: "not_in_world", 1: "off_track", 2: "in_pit_stall", 3: "approaching_pits", 4: "on_track"}
+        surface_name = surface_names.get(track_surface, f"unknown({track_surface})")
+        
+        logger.info(f"✅ All coaching conditions met! Speed: {speed:.1f}, Session: {session_state}, Surface: {surface_name}, Flags: 0x{session_flags:08x}")
         return True
 
 def main():

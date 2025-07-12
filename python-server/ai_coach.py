@@ -103,19 +103,22 @@ class LocalAICoach:
             # Generate coaching messages
             messages = []
             
-            # Show baseline countdown if not established yet
+            # If baseline not established, only show countdown message
             if not self.baseline_established:
                 countdown_message = self._generate_baseline_countdown(telemetry)
                 if countdown_message:
                     messages.append(countdown_message)
+                # Return early - no other messages until baseline is established
+                return self._prioritize_messages(messages)
             
-            # Immediate feedback (works from lap 1) - tire/brake pattern analysis
+            # Baseline is established - show all coaching messages
+            # Immediate feedback - tire/brake pattern analysis
             messages.extend(self._analyze_tire_management(telemetry))
             messages.extend(self._analyze_brake_usage(telemetry))
             messages.extend(self._analyze_throttle_application(telemetry))
             messages.extend(self._analyze_track_surface(telemetry))  # Track surface analysis
             
-            # General coaching tips (always available)
+            # General coaching tips
             messages.extend(self._generate_general_tips(telemetry))
             
             # Advanced feedback (requires lap history)

@@ -281,9 +281,7 @@ const GT3OverlaySystem = () => {
 
   const [widgetPositions, setWidgetPositions] = useState({
     deltaTime: { x: 50, y: 50 },
-    tireTemps: { x: 300, y: 50 },
     fuel: { x: 550, y: 50 },
-    brakeTemps: { x: 50, y: 300 },
     coaching: { x: 300, y: 300 },
     speedGear: { x: 550, y: 300 },
     sessionInfo: { x: 50, y: 500 },
@@ -292,9 +290,7 @@ const GT3OverlaySystem = () => {
 
   const [widgetVisibility, setWidgetVisibility] = useState({
     deltaTime: true,
-    tireTemps: true,
     fuel: true,
-    brakeTemps: true,
     coaching: true,
     speedGear: true,
     sessionInfo: true,
@@ -318,9 +314,7 @@ const GT3OverlaySystem = () => {
   const resetPositions = () => {
     setWidgetPositions({
       deltaTime: { x: 50, y: 50 },
-      tireTemps: { x: 300, y: 50 },
       fuel: { x: 550, y: 50 },
-      brakeTemps: { x: 50, y: 300 },
       coaching: { x: 300, y: 300 },
       speedGear: { x: 550, y: 300 },
       sessionInfo: { x: 50, y: 500 },
@@ -328,20 +322,7 @@ const GT3OverlaySystem = () => {
     });
   };
 
-  const getTireColor = (temp) => {
-    if (!temp) return "#6B7280";
-    if (temp < 175) return "#3B82F6";
-    if (temp < 200) return "#10B981";
-    if (temp < 250) return "#F59E0B";
-    return "#EF4444";
-  };
-
-  const getBrakeColor = (temp) => {
-    if (!temp) return "#6B7280";
-    if (temp < 800) return "#10B981";
-    if (temp < 1200) return "#F59E0B";
-    return "#EF4444";
-  };
+  // Note: Tire and brake temperature color functions removed since iRacing doesn't provide reliable data
 
   const getCoachingColor = (category, priority) => {
     if (priority >= 9) return "bg-red-900 border-red-500";
@@ -419,54 +400,7 @@ const GT3OverlaySystem = () => {
     );
   };
 
-  const TireTempsWidget = () => (
-    <div className="grid grid-cols-2 gap-2">
-      <div className="text-center">
-        <div
-          className="w-12 h-12 rounded-full flex items-center justify-center text-white text-xs font-bold mx-auto"
-          style={{ backgroundColor: getTireColor(telemetryData?.tireTempLF) }}
-        >
-          {telemetryData?.tireTempLF
-            ? telemetryData.tireTempLF.toFixed(0)
-            : "--"}
-        </div>
-        <div className="text-xs text-gray-400 mt-1">FL</div>
-      </div>
-      <div className="text-center">
-        <div
-          className="w-12 h-12 rounded-full flex items-center justify-center text-white text-xs font-bold mx-auto"
-          style={{ backgroundColor: getTireColor(telemetryData?.tireTempRF) }}
-        >
-          {telemetryData?.tireTempRF
-            ? telemetryData.tireTempRF.toFixed(0)
-            : "--"}
-        </div>
-        <div className="text-xs text-gray-400 mt-1">FR</div>
-      </div>
-      <div className="text-center">
-        <div
-          className="w-12 h-12 rounded-full flex items-center justify-center text-white text-xs font-bold mx-auto"
-          style={{ backgroundColor: getTireColor(telemetryData?.tireTempLR) }}
-        >
-          {telemetryData?.tireTempLR
-            ? telemetryData.tireTempLR.toFixed(0)
-            : "--"}
-        </div>
-        <div className="text-xs text-gray-400 mt-1">RL</div>
-      </div>
-      <div className="text-center">
-        <div
-          className="w-12 h-12 rounded-full flex items-center justify-center text-white text-xs font-bold mx-auto"
-          style={{ backgroundColor: getTireColor(telemetryData?.tireTempRR) }}
-        >
-          {telemetryData?.tireTempRR
-            ? telemetryData.tireTempRR.toFixed(0)
-            : "--"}
-        </div>
-        <div className="text-xs text-gray-400 mt-1">RR</div>
-      </div>
-    </div>
-  );
+  // Note: TireTempsWidget removed - iRacing doesn't provide reliable tire temperature data
 
   const FuelWidget = () => {
     // Calculate laps remaining more accurately
@@ -516,59 +450,7 @@ const GT3OverlaySystem = () => {
     );
   };
 
-  const BrakeTempsWidget = () => (
-    <div className="space-y-2">
-      <div className="flex justify-between">
-        <span className="text-sm">FL</span>
-        <span
-          className="text-sm font-bold"
-          style={{ color: getBrakeColor(telemetryData?.brakeTempLF) }}
-        >
-          {telemetryData?.brakeTempLF
-            ? telemetryData.brakeTempLF.toFixed(0)
-            : "--"}
-          °F
-        </span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-sm">FR</span>
-        <span
-          className="text-sm font-bold"
-          style={{ color: getBrakeColor(telemetryData?.brakeTempRF) }}
-        >
-          {telemetryData?.brakeTempRF
-            ? telemetryData.brakeTempRF.toFixed(0)
-            : "--"}
-          °F
-        </span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-sm">RL</span>
-        <span
-          className="text-sm font-bold"
-          style={{ color: getBrakeColor(telemetryData?.brakeTempLR) }}
-        >
-          {telemetryData?.brakeTempLR
-            ? telemetryData.brakeTempLR.toFixed(0)
-            : "--"}
-          °F
-        </span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-sm">RR</span>
-        <span
-          className="text-sm font-bold"
-          style={{ color: getBrakeColor(telemetryData?.brakeTempRR) }}
-        >
-          {telemetryData?.brakeTempRR
-            ? telemetryData.brakeTempRR.toFixed(0)
-            : "--"}
-          °F
-        </span>
-      </div>
-      <div className="text-xs text-gray-400 text-center">Brake Temps</div>
-    </div>
-  );
+  // Note: BrakeTempsWidget removed - iRacing doesn't provide reliable brake temperature data
 
   const CoachingWidget = () => {
     const MESSAGE_DISPLAY_TIME = 12000; // 12 seconds per message
@@ -825,16 +707,7 @@ const GT3OverlaySystem = () => {
         <DeltaTimeWidget />
       </DraggableWidget>
 
-      <DraggableWidget
-        id="tireTemps"
-        title="Tire Temps"
-        position={widgetPositions.tireTemps}
-        onPositionChange={handlePositionChange}
-        isVisible={widgetVisibility.tireTemps}
-        onToggleVisibility={handleToggleVisibility}
-      >
-        <TireTempsWidget />
-      </DraggableWidget>
+      {/* Note: Tire and brake temperature widgets removed - iRacing doesn't provide reliable data */}
 
       <DraggableWidget
         id="fuel"
@@ -845,17 +718,6 @@ const GT3OverlaySystem = () => {
         onToggleVisibility={handleToggleVisibility}
       >
         <FuelWidget />
-      </DraggableWidget>
-
-      <DraggableWidget
-        id="brakeTemps"
-        title="Brake Temps"
-        position={widgetPositions.brakeTemps}
-        onPositionChange={handlePositionChange}
-        isVisible={widgetVisibility.brakeTemps}
-        onToggleVisibility={handleToggleVisibility}
-      >
-        <BrakeTempsWidget />
       </DraggableWidget>
 
       <DraggableWidget

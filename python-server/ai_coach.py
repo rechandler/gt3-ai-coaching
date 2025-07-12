@@ -38,8 +38,7 @@ class LapData:
     avg_speed: float = 0.0
     brake_events: List[Dict] = field(default_factory=list)
     throttle_events: List[Dict] = field(default_factory=list)
-    tire_temps: Dict[str, float] = field(default_factory=dict)
-    brake_temps: Dict[str, float] = field(default_factory=dict)
+    # Note: tire_temps and brake_temps removed - iRacing doesn't provide reliable data during racing
     fuel_used: float = 0.0
     incidents: int = 0
     timestamp: float = field(default_factory=time.time)
@@ -77,8 +76,7 @@ class LocalAICoach:
         self.last_throttle_point = None
         
         # Performance baselines (updated as driver improves)
-        self.target_tire_temps = {'LF': 220, 'RF': 220, 'LR': 200, 'RR': 200}  # Fahrenheit
-        self.target_brake_temps = {'LF': 400, 'RF': 400, 'LR': 350, 'RR': 350}  # Fahrenheit
+        # Note: Tire and brake temps removed as iRacing doesn't provide reliable data during racing
         
         # Advanced learning attributes
         self.driving_style = "unknown"  # consistent, developing, improving
@@ -104,7 +102,7 @@ class LocalAICoach:
             # Generate coaching messages
             messages = []
             
-            # Immediate feedback (works from lap 1)
+            # Immediate feedback (works from lap 1) - tire/brake pattern analysis
             messages.extend(self._analyze_tire_management(telemetry))
             messages.extend(self._analyze_brake_usage(telemetry))
             messages.extend(self._analyze_throttle_application(telemetry))
@@ -151,16 +149,10 @@ class LocalAICoach:
             'gear': telemetry.get('gear', 0),
             'rpm': telemetry.get('rpm', 0),
             'tire_temps': {
-                'LF': telemetry.get('tireTempLF', 0),
-                'RF': telemetry.get('tireTempRF', 0),
-                'LR': telemetry.get('tireTempLR', 0),
-                'RR': telemetry.get('tireTempRR', 0)
+                # Note: Tire temps removed - iRacing doesn't provide reliable data during racing
             },
             'brake_temps': {
-                'LF': telemetry.get('brakeTempLF', 0),
-                'RF': telemetry.get('brakeTempRF', 0),
-                'LR': telemetry.get('brakeTempLR', 0),
-                'RR': telemetry.get('brakeTempRR', 0)
+                # Note: Brake temps removed - iRacing doesn't provide reliable data during racing
             }
         })
     
@@ -177,9 +169,7 @@ class LocalAICoach:
             
             lap = LapData(
                 lap_number=self.current_lap_data.get('lap_number', 0),
-                lap_time=lap_time,
-                tire_temps=self.current_lap_data.get('tire_temps', {}),
-                brake_temps=self.current_lap_data.get('brake_temps', {})
+                lap_time=lap_time
             )
             
             self.laps.append(lap)
@@ -220,65 +210,22 @@ class LocalAICoach:
     def _update_ai_models(self, lap: LapData):
         """Update AI learning models with new lap data"""
         try:
-            # 1. Learn optimal tire temperature management
-            self._learn_tire_management(lap)
+            # Note: Tire and brake temperature learning removed since iRacing doesn't provide
+            # reliable tire/brake temperature data during racing through iRSDK
             
-            # 2. Analyze and learn from brake patterns
-            self._learn_brake_patterns(lap)
-            
-            # 3. Update driving style classification
+            # 1. Update driving style classification
             self._classify_driving_style(lap)
             
-            # 4. Learn track-specific patterns (if we have position data)
+            # 2. Learn track-specific patterns (if we have position data)
             self._learn_track_patterns(lap)
             
-            # 5. Adaptive threshold updates
+            # 3. Adaptive threshold updates
             self._update_adaptive_thresholds(lap)
             
             logger.debug(f"🧠 AI models updated with lap {lap.lap_number} data")
             
         except Exception as e:
             logger.error(f"Error updating AI models: {e}")
-    
-    def _learn_tire_management(self, lap: LapData):
-        """Learn optimal tire temperature patterns from successful laps"""
-        if not lap.tire_temps or lap.lap_time <= 0:
-            return
-            
-        # Only learn from good laps (within 102% of best time)
-        if self.best_lap and lap.lap_time > self.best_lap.lap_time * 1.02:
-            return
-            
-        # Update optimal temperature targets based on fast laps
-        for tire, temp in lap.tire_temps.items():
-            if temp > 0:  # Valid temperature
-                current_target = self.target_tire_temps[tire]
-                
-                # Exponential moving average to learn optimal temps
-                alpha = self.learning_rate
-                self.target_tire_temps[tire] = (1 - alpha) * current_target + alpha * temp
-                
-        logger.debug(f"🌡️ Updated tire targets: {self.target_tire_temps}")
-    
-    def _learn_brake_patterns(self, lap: LapData):
-        """Learn optimal brake temperature patterns"""
-        if not lap.brake_temps or lap.lap_time <= 0:
-            return
-            
-        # Only learn from good laps
-        if self.best_lap and lap.lap_time > self.best_lap.lap_time * 1.02:
-            return
-            
-        # Update optimal brake temperature targets
-        for brake, temp in lap.brake_temps.items():
-            if temp > 0:  # Valid temperature
-                current_target = self.target_brake_temps[brake]
-                
-                # Learn optimal brake temps (cooler is generally better for consistency)
-                alpha = self.learning_rate * 0.5  # Learn slower for brakes
-                self.target_brake_temps[brake] = (1 - alpha) * current_target + alpha * temp
-                
-        logger.debug(f"🔥 Updated brake targets: {self.target_brake_temps}")
     
     def _classify_driving_style(self, lap: LapData):
         """Classify and adapt to driver's style"""
@@ -361,9 +308,9 @@ class LocalAICoach:
             'technical': [
                 "ABS activated? You're braking too hard - ease off slightly",
                 "Traction control kicking in? Progressive throttle is key",
-                "Tire temperature is crucial - watch those temps",
                 "Weight transfer is your friend - use it wisely",
-                "Find the racing line and stick to it"
+                "Find the racing line and stick to it",
+                "Smooth inputs lead to faster lap times"
             ],
             'mental': [
                 "Stay calm and focused - panic leads to mistakes",
@@ -407,117 +354,62 @@ class LocalAICoach:
         return messages
     
     def _analyze_tire_management(self, telemetry: Dict[str, Any]) -> List[CoachingMessage]:
-        """Analyze tire temperatures and provide management advice"""
+        """Analyze tire usage patterns based on driving behavior (no temperature data)"""
         messages = []
         
-        tire_temps = {
-            'LF': telemetry.get('tireTempLF', 0),
-            'RF': telemetry.get('tireTempRF', 0),
-            'LR': telemetry.get('tireTempLR', 0),
-            'RR': telemetry.get('tireTempRR', 0)
-        }
+        # Note: Tire temperature analysis removed since iRacing doesn't provide reliable
+        # tire temperature data during racing through iRSDK. 
+        # This function is kept for future tire pressure/wear analysis if data becomes available.
         
-        # Apply coaching intensity modifier
-        intensity = getattr(self, 'coaching_intensity', 1.0)
+        speed = telemetry.get('speed', 0)
+        throttle = telemetry.get('throttle', 0)
+        brake = telemetry.get('brake', 0)
         
-        # Check for overheating
-        for tire, temp in tire_temps.items():
-            if temp > 0:  # Valid temperature
-                target = self.target_tire_temps[tire]
-                
-                if temp > target + (30 / intensity):  # Adaptive threshold
-                    messages.append(CoachingMessage(
-                        message=f"{tire} tire overheating ({temp:.0f}F) - ease off the pace",
-                        category="tires",
-                        priority=min(10, int(8 * intensity)),
-                        confidence=90,
-                        data_source="tire_temp",
-                        improvement_potential=0.5
-                    ))
-                elif temp > target + (15 / intensity):  # Getting hot
-                    messages.append(CoachingMessage(
-                        message=f"{tire} tire getting hot ({temp:.0f}F) - manage pace",
-                        category="tires",
-                        priority=min(10, int(5 * intensity)),
-                        confidence=85,
-                        data_source="tire_temp"
-                    ))
-                elif temp < target - 20:  # Too cold
-                    messages.append(CoachingMessage(
-                        message=f"{tire} tire cold ({temp:.0f}F) - push harder to warm up",
-                        category="tires",
-                        priority=4,
-                        confidence=80,
-                        data_source="tire_temp"
-                    ))
-        
-        # Check tire balance with learned targets
-        if all(temp > 0 for temp in tire_temps.values()):
-            front_avg = (tire_temps['LF'] + tire_temps['RF']) / 2
-            rear_avg = (tire_temps['LR'] + tire_temps['RR']) / 2
+        # Analyze tire usage patterns based on driving behavior
+        if len(self.telemetry_buffer) >= 10:
+            # Check for aggressive driving that could harm tires
+            recent_data = list(self.telemetry_buffer)[-10:]
             
-            # Use learned optimal balance
-            learned_front_avg = (self.target_tire_temps['LF'] + self.target_tire_temps['RF']) / 2
-            learned_rear_avg = (self.target_tire_temps['LR'] + self.target_tire_temps['RR']) / 2
-            learned_balance = learned_front_avg - learned_rear_avg
-            current_balance = front_avg - rear_avg
+            # Count hard braking events
+            hard_braking_count = sum(1 for data in recent_data if data.get('brake', 0) > 90)
             
-            if abs(current_balance - learned_balance) > 15:
-                if current_balance > learned_balance:
-                    messages.append(CoachingMessage(
-                        message="Front tires running hotter than your optimal balance - adjust driving style",
-                        category="tires",
-                        priority=6,
-                        confidence=80,
-                        data_source="tire_balance_learned"
-                    ))
-                else:
-                    messages.append(CoachingMessage(
-                        message="Rear tires running hotter than your optimal balance - check setup",
-                        category="tires",
-                        priority=6,
-                        confidence=80,
-                        data_source="tire_balance_learned"
-                    ))
+            # Count aggressive throttle applications
+            aggressive_throttle_count = 0
+            for i in range(1, len(recent_data)):
+                throttle_delta = recent_data[i].get('throttle', 0) - recent_data[i-1].get('throttle', 0)
+                if throttle_delta > 40:  # Sudden throttle spike
+                    aggressive_throttle_count += 1
+            
+            if hard_braking_count >= 3:
+                messages.append(CoachingMessage(
+                    message="Frequent hard braking detected - try smoother inputs for better tire life",
+                    category="tires",
+                    priority=5,
+                    confidence=70,
+                    data_source="driving_pattern"
+                ))
+            
+            if aggressive_throttle_count >= 3:
+                messages.append(CoachingMessage(
+                    message="Aggressive throttle inputs detected - smooth application preserves tires",
+                    category="tires", 
+                    priority=4,
+                    confidence=70,
+                    data_source="driving_pattern"
+                ))
         
         return messages
     
     def _analyze_brake_usage(self, telemetry: Dict[str, Any]) -> List[CoachingMessage]:
-        """Analyze braking patterns and temperatures"""
+        """Analyze braking patterns and technique (no temperature data)"""
         messages = []
         
         brake_pressure = telemetry.get('brake', 0)
         speed = telemetry.get('speed', 0)
         
-        # Check brake temperatures
-        brake_temps = {
-            'LF': telemetry.get('brakeTempLF', 0),
-            'RF': telemetry.get('brakeTempRF', 0),
-            'LR': telemetry.get('brakeTempLR', 0),
-            'RR': telemetry.get('brakeTempRR', 0)
-        }
-        
-        for brake, temp in brake_temps.items():
-            if temp > 0:  # Valid temperature
-                target = self.target_brake_temps[brake]
-                
-                if temp > target + 100:  # Overheating
-                    messages.append(CoachingMessage(
-                        message=f"{brake} brake overheating ({temp:.0f}F) - brake earlier and lighter",
-                        category="braking",
-                        priority=9,
-                        confidence=95,
-                        data_source="brake_temp",
-                        improvement_potential=0.3
-                    ))
-                elif temp > target + 50:  # Getting hot
-                    messages.append(CoachingMessage(
-                        message=f"{brake} brake getting hot ({temp:.0f}F) - ease brake pressure",
-                        category="braking",
-                        priority=6,
-                        confidence=85,
-                        data_source="brake_temp"
-                    ))
+        # Note: Brake temperature analysis removed since iRacing doesn't provide reliable
+        # brake temperature data during racing through iRSDK.
+        # Focus on braking technique and pressure patterns instead.
         
         # Analyze braking technique
         if brake_pressure > 80 and speed > 100:  # Hard braking at high speed
@@ -530,6 +422,49 @@ class LocalAICoach:
                     data_source="brake_pressure"
                 ))
                 self._last_hard_brake = time.time()
+        
+        # Check for brake/throttle overlap (trail braking analysis)
+        throttle = telemetry.get('throttle', 0)
+        if brake_pressure > 20 and throttle > 20:
+            # Could be trail braking (good) or poor technique (bad)
+            if speed > 80:  # High speed = likely good trail braking
+                if not hasattr(self, '_last_trail_brake_tip') or time.time() - self._last_trail_brake_tip > 15:
+                    messages.append(CoachingMessage(
+                        message="Good trail braking technique - helps rotate the car",
+                        category="braking",
+                        priority=2,
+                        confidence=60,
+                        data_source="trail_braking"
+                    ))
+                    self._last_trail_brake_tip = time.time()
+            else:  # Low speed = likely poor technique
+                messages.append(CoachingMessage(
+                    message="Avoid brake/throttle overlap at low speeds - choose one input",
+                    category="braking",
+                    priority=6,
+                    confidence=75,
+                    data_source="input_overlap"
+                ))
+        
+        # Analyze braking consistency over time
+        if len(self.telemetry_buffer) >= 20:
+            recent_brake_events = []
+            for data in list(self.telemetry_buffer)[-20:]:
+                if data.get('brake', 0) > 50:  # Significant braking
+                    recent_brake_events.append(data.get('brake', 0))
+            
+            if len(recent_brake_events) >= 5:
+                brake_variance = np.std(recent_brake_events) / np.mean(recent_brake_events)
+                if brake_variance > 0.3:  # High variance in brake pressure
+                    if not hasattr(self, '_last_brake_consistency_tip') or time.time() - self._last_brake_consistency_tip > 20:
+                        messages.append(CoachingMessage(
+                            message="Brake pressure consistency could improve - practice smooth inputs",
+                            category="braking",
+                            priority=3,
+                            confidence=65,
+                            data_source="brake_consistency"
+                        ))
+                        self._last_brake_consistency_tip = time.time()
         
         return messages
     
@@ -726,9 +661,8 @@ class LocalAICoach:
             
             # AI Learning Insights
             "driving_style": getattr(self, 'driving_style', 'unknown'),
-            "coaching_intensity": getattr(self, 'coaching_intensity', 1.0),
-            "learned_tire_temps": self.target_tire_temps,
-            "learned_brake_temps": self.target_brake_temps
+            "coaching_intensity": getattr(self, 'coaching_intensity', 1.0)
+            # Note: tire/brake temp learning removed - iRacing doesn't provide reliable data
         }
         
         if len(self.laps) >= 3:

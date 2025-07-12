@@ -703,88 +703,8 @@ class GT3TelemetryServer:
             
             # Use clean telemetry for the rest of the function
             telemetry = telemetry_clean
-            tire_temp_mapping = {
-                'tireTempLF': 'LFTempCM',
-                'tireTempRF': 'RFTempCM', 
-                'tireTempLR': 'LRTempCM',
-                'tireTempRR': 'RRTempCM'
-            }
-            
-            tire_data_found = False
-            logger.debug("Checking for tire temperature data...")
-            for display_name, irsdk_key in tire_temp_mapping.items():
-                temp = self.safe_get_telemetry(irsdk_key)
-                logger.debug(f"Tire temp {irsdk_key}: {temp}")
-                if temp is not None:
-                    # Test both interpretations
-                    temp_as_celsius = (temp * 9/5) + 32  # Assume Celsius, convert to F
-                    temp_as_fahrenheit = temp  # Assume already Fahrenheit
-                    
-                    logger.info(f"🔍 {irsdk_key} raw value: {temp}")
-                    logger.info(f"🔍 If Celsius: {temp}°C = {temp_as_celsius:.1f}°F")
-                    logger.info(f"🔍 If Fahrenheit: {temp_as_fahrenheit:.1f}°F")
-                    
-                    # For now, let's assume it's already Fahrenheit if the value looks reasonable
-                    if 50 <= temp <= 300:  # Reasonable Fahrenheit range for tires
-                        temp_fahrenheit = temp  # Use as-is (assume Fahrenheit)
-                        logger.info(f"✅ Using as Fahrenheit: {display_name} = {temp_fahrenheit:.1f}°F")
-                    else:
-                        # Convert from Celsius to Fahrenheit
-                        temp_fahrenheit = (temp * 9/5) + 32
-                        logger.info(f"✅ Converting from Celsius: {display_name} = {temp:.1f}°C = {temp_fahrenheit:.1f}°F")
-                    
-                    # Only use temperatures that seem reasonable (above 32°F, below 500°F)
-                    if 32 <= temp_fahrenheit <= 500:
-                        telemetry[display_name] = temp_fahrenheit
-                        data_count += 1
-                        tire_data_found = True
-                    else:
-                        logger.debug(f"⚠️ Rejected unreasonable temp {display_name}: {temp_fahrenheit:.1f}°F")
-                    
-            # If center temps aren't available, try other tire temp fields
-            if not tire_data_found:
-                logger.debug("Primary tire temps not found, trying alternates...")
-                alternate_tire_mapping = {
-                    'tireTempLF': ['LFTempCL', 'LFTempCR', 'LFTempC'],
-                    'tireTempRF': ['RFTempCL', 'RFTempCR', 'RFTempC'], 
-                    'tireTempLR': ['LRTempCL', 'LRTempCR', 'LRTempC'],
-                    'tireTempRR': ['RRTempCL', 'RRTempCR', 'RRTempC']
-                }
-                
-                for display_name, alt_keys in alternate_tire_mapping.items():
-                    for alt_key in alt_keys:
-                        temp = self.safe_get_telemetry(alt_key)
-                        logger.debug(f"Alternate tire temp {alt_key}: {temp}")
-                        if temp is not None and temp > 0:  # Only use valid temperatures > 0
-                            temp_fahrenheit = (temp * 9/5) + 32
-                            telemetry[display_name] = temp_fahrenheit
-                            data_count += 1
-                            logger.info(f"Using alternate tire temp field {alt_key} for {display_name}: {temp_fahrenheit:.1f}°F")
-                            break
-                            
-            # If still no tire data and the car is stationary, provide ambient temps as placeholders
-            if not tire_data_found:
-                air_temp = self.safe_get_telemetry('AirTemp')
-                if air_temp is not None:
-                    # Use air temperature as baseline for cold tires
-                    air_temp_fahrenheit = (air_temp * 9/5) + 32
-                    logger.info(f"🌡️ Using air temperature fallback: {air_temp:.1f}°C = {air_temp_fahrenheit:.1f}°F")
-                    for display_name in ['tireTempLF', 'tireTempRF', 'tireTempLR', 'tireTempRR']:
-                        telemetry[display_name] = air_temp_fahrenheit
-                        data_count += 1
-                    logger.debug(f"Using air temperature {air_temp_fahrenheit:.1f}°F for cold tires")
-                else:
-                    # If no air temp available, let's try to see if iRacing has any tire temp at all (even if 0)
-                    logger.info("🔍 No air temp available, checking raw tire temps including zeros...")
-                    for display_name, irsdk_key in tire_temp_mapping.items():
-                        temp = self.safe_get_telemetry(irsdk_key)
-                        logger.info(f"Raw tire temp {irsdk_key}: {temp}")
-                        if temp is not None:
-                            # Show even zero temperatures with conversion
-                            temp_fahrenheit = (temp * 9/5) + 32
-                            telemetry[display_name] = temp_fahrenheit
-                            data_count += 1
-                            logger.info(f"Using raw {display_name}: {temp:.1f}°C = {temp_fahrenheit:.1f}°F")
+            # Note: Tire temperature collection removed - iRacing doesn't provide reliable
+            # tire temperature data during racing through iRSDK
             
             # Get tire pressures
             tire_pressure_mapping = {
@@ -800,61 +720,8 @@ class GT3TelemetryServer:
                     telemetry[display_name] = pressure
                     data_count += 1
             
-            # Get brake temperatures (all four corners)
-            brake_temp_mapping = {
-                'brakeTempLF': 'LFbrakeLineTemp',
-                'brakeTempRF': 'RFbrakeLineTemp',
-                'brakeTempLR': 'LRbrakeLineTemp',
-                'brakeTempRR': 'RRbrakeLineTemp'
-            }
-            
-            brake_data_found = False
-            logger.debug("Checking for brake temperature data...")
-            for display_name, irsdk_key in brake_temp_mapping.items():
-                temp = self.safe_get_telemetry(irsdk_key)
-                logger.debug(f"Brake temp {irsdk_key}: {temp}")
-                if temp is not None and temp > 0:  # Only use valid temperatures > 0
-                    # Convert brake temperature from Celsius to Fahrenheit
-                    temp_fahrenheit = (temp * 9/5) + 32
-                    telemetry[display_name] = temp_fahrenheit
-                    data_count += 1
-                    brake_data_found = True
-                    logger.debug(f"Added {display_name}: {temp_fahrenheit:.1f}°F")
-            
-            # If primary brake temps aren't available, try alternate field names
-            if not brake_data_found:
-                logger.debug("Primary brake temps not found, trying alternates...")
-                alternate_brake_mapping = {
-                    'brakeTempLF': ['LFBrakeLineTemp', 'LFbrakeTempAir', 'LFShockDefl'],
-                    'brakeTempRF': ['RFBrakeLineTemp', 'RFbrakeTempAir', 'RFShockDefl'],
-                    'brakeTempLR': ['LRBrakeLineTemp', 'LRbrakeTempAir', 'LRShockDefl'],
-                    'brakeTempRR': ['RRBrakeLineTemp', 'RRbrakeTempAir', 'RRShockDefl']
-                }
-                
-                for display_name, alt_keys in alternate_brake_mapping.items():
-                    for alt_key in alt_keys:
-                        temp = self.safe_get_telemetry(alt_key)
-                        logger.debug(f"Alternate brake temp {alt_key}: {temp}")
-                        if temp is not None and temp > 0:
-                            # Convert brake temperature from Celsius to Fahrenheit
-                            temp_fahrenheit = (temp * 9/5) + 32
-                            telemetry[display_name] = temp_fahrenheit
-                            data_count += 1
-                            logger.info(f"Using alternate brake temp field {alt_key} for {display_name}: {temp_fahrenheit:.1f}°F")
-                            brake_data_found = True
-                            break
-            
-            # If still no brake data, provide ambient baseline temperatures
-            if not brake_data_found:
-                air_temp = self.safe_get_telemetry('AirTemp')
-                if air_temp is not None:
-                    # Use air temperature + small offset for cold brakes
-                    air_temp_fahrenheit = (air_temp * 9/5) + 32
-                    cold_brake_temp = air_temp_fahrenheit + 10  # Cold brakes are slightly warmer than air
-                    for display_name in ['brakeTempLF', 'brakeTempRF', 'brakeTempLR', 'brakeTempRR']:
-                        telemetry[display_name] = cold_brake_temp
-                        data_count += 1
-                    logger.debug(f"Using baseline temperature {cold_brake_temp:.1f}°F for cold brakes")
+            # Note: Brake temperature collection removed - iRacing doesn't provide reliable
+            # brake temperature data during racing through iRSDK
             
             # Return the completed telemetry data
             if data_count > 0:
@@ -915,15 +782,7 @@ class GT3TelemetryServer:
                     if current_time - last_telemetry_time > 10:  # Every 10 seconds
                         logger.info(f"� Telemetry streaming (Speed: {telemetry.get('speed', 0):.1f} mph, RPM: {telemetry.get('rpm', 0):.0f})")
                         
-                        # Debug tire temperatures if available
-                        tire_temps = [f"{k}: {v:.1f}°F" for k, v in telemetry.items() if k.startswith('tireTemp') and v is not None]
-                        if tire_temps:
-                            logger.info(f"🔥 Tire temps: {', '.join(tire_temps)}")
-                        
-                        # Debug brake temperatures if available
-                        brake_temps = [f"{k}: {v:.1f}°F" for k, v in telemetry.items() if k.startswith('brakeTemp') and v is not None]
-                        if brake_temps:
-                            logger.info(f"🔥 Brake temps: {', '.join(brake_temps)}")
+                        # Note: Tire and brake temperature logging removed since iRacing doesn't provide reliable data
                         
                         # Debug AI coaching status
                         if 'coachingMessage' in telemetry:

@@ -1,0 +1,38 @@
+{
+  "session_id": "Reset Test Track_Reset Test Car_1752336015",
+  "track_name": "Reset Test Track",
+  "car_name": "Reset Test Car",
+  "start_time": 1752336015.5097125,
+  "end_time": 1752336015.516199,
+  "laps": [
+    {
+      "lap_number": 1,
+      "lap_time": 90.0,
+      "timestamp": 1752336015.5105264
+    },
+    {
+      "lap_number": 2,
+      "lap_time": 90.0,
+      "timestamp": 1752336015.5105324
+    },
+    {
+      "lap_number": 3,
+      "lap_time": 90.0,
+      "timestamp": 1752336015.5105333
+    }
+  ],
+  "best_lap_time": 90.0,
+  "best_lap_number": 1,
+  "baseline_established": false,
+  "driving_style": "unknown",
+  "coaching_intensity": 1.0,
+  "consistency_threshold": 0.05,
+  "corner_analysis": {},
+  "brake_point_history": {},
+  "speed_history": {},
+  "track_learning": {},
+  "optimal_shift_rpm_ranges": {},
+  "gear_shift_history": [],
+  "total_distance": 0.0,
+  "total_incidents": 0
+}

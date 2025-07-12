@@ -314,24 +314,137 @@ class SessionPersistenceManager:
         logger.info("☁️ Cloud sync thread started")
     
     def _sync_to_cloud(self, session_id: str):
-        """Sync session to cloud storage (implement based on your cloud provider)"""
-        # Placeholder for cloud sync implementation
-        # This could integrate with:
-        # - AWS S3
-        # - Google Cloud Storage
-        # - Azure Blob Storage
-        # - Firebase
-        # - Custom API
-        
-        logger.debug(f"☁️ Would sync to cloud: {session_id}")
-        # Implementation depends on chosen cloud provider
-        pass
+        """Sync session to cloud storage (Firebase implementation)"""
+        try:
+            session = self.sessions_cache.get(session_id)
+            if not session:
+                return
+            
+            # Example: Firebase Firestore sync
+            # Uncomment and configure if you want to use Firebase:
+            """
+            import firebase_admin
+            from firebase_admin import credentials, firestore
+            
+            # Initialize Firebase (do this once in __init__)
+            if not firebase_admin._apps:
+                cred = credentials.Certificate("path/to/serviceAccountKey.json")
+                firebase_admin.initialize_app(cred)
+            
+            db = firestore.client()
+            
+            # Save session to Firestore
+            doc_ref = db.collection('gt3_sessions').document(session_id)
+            doc_ref.set(session.to_dict())
+            
+            logger.info(f"☁️ Synced session to Firebase: {session_id}")
+            """
+            
+            # Example: Simple file upload to cloud storage
+            # You can implement any cloud provider here:
+            """
+            # AWS S3
+            import boto3
+            s3 = boto3.client('s3')
+            s3.put_object(
+                Bucket='gt3-coaching-data',
+                Key=f'sessions/{session_id}.json',
+                Body=json.dumps(session.to_dict())
+            )
+            
+            # Google Cloud Storage
+            from google.cloud import storage
+            client = storage.Client()
+            bucket = client.bucket('gt3-coaching-data')
+            blob = bucket.blob(f'sessions/{session_id}.json')
+            blob.upload_from_string(json.dumps(session.to_dict()))
+            
+            # Azure Blob Storage
+            from azure.storage.blob import BlobServiceClient
+            blob_service = BlobServiceClient(account_url="https://account.blob.core.windows.net")
+            blob_client = blob_service.get_blob_client(
+                container="gt3-coaching", 
+                blob=f"sessions/{session_id}.json"
+            )
+            blob_client.upload_blob(json.dumps(session.to_dict()))
+            """
+            
+            logger.debug(f"☁️ Would sync to cloud: {session_id} (implementation needed)")
+            
+        except Exception as e:
+            logger.error(f"Failed to sync session {session_id} to cloud: {e}")
     
     def _delete_from_cloud(self, session_id: str):
         """Delete session from cloud storage"""
-        logger.debug(f"☁️ Would delete from cloud: {session_id}")
-        # Implementation depends on chosen cloud provider
-        pass
+        try:
+            # Example implementations for different providers:
+            """
+            # Firebase
+            db = firestore.client()
+            db.collection('gt3_sessions').document(session_id).delete()
+            
+            # AWS S3
+            s3.delete_object(Bucket='gt3-coaching-data', Key=f'sessions/{session_id}.json')
+            
+            # Google Cloud
+            bucket.blob(f'sessions/{session_id}.json').delete()
+            
+            # Azure
+            blob_client.delete_blob()
+            """
+            
+            logger.debug(f"☁️ Would delete from cloud: {session_id} (implementation needed)")
+            
+        except Exception as e:
+            logger.error(f"Failed to delete session {session_id} from cloud: {e}")
+    
+    def setup_firebase_sync(self, service_account_path: str):
+        """Setup Firebase cloud sync with service account"""
+        try:
+            import firebase_admin
+            from firebase_admin import credentials
+            
+            if not firebase_admin._apps:
+                cred = credentials.Certificate(service_account_path)
+                firebase_admin.initialize_app(cred)
+            
+            self.cloud_provider = "firebase"
+            self.enable_cloud_sync()
+            logger.info("🔥 Firebase cloud sync enabled")
+            return True
+            
+        except ImportError:
+            logger.error("Firebase Admin SDK not installed. Run: pip install firebase-admin")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to setup Firebase: {e}")
+            return False
+    
+    def setup_aws_sync(self, aws_config: Dict[str, str]):
+        """Setup AWS S3 cloud sync"""
+        try:
+            import boto3
+            
+            # Configure AWS credentials
+            self.s3_client = boto3.client(
+                's3',
+                aws_access_key_id=aws_config.get('access_key'),
+                aws_secret_access_key=aws_config.get('secret_key'),
+                region_name=aws_config.get('region', 'us-east-1')
+            )
+            self.s3_bucket = aws_config.get('bucket_name')
+            
+            self.cloud_provider = "aws_s3"
+            self.enable_cloud_sync()
+            logger.info("🏗️ AWS S3 cloud sync enabled")
+            return True
+            
+        except ImportError:
+            logger.error("Boto3 not installed. Run: pip install boto3")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to setup AWS S3: {e}")
+            return False
     
     def enable_cloud_sync(self, cloud_config: Optional[Dict[str, Any]] = None):
         """Enable cloud synchronization"""

@@ -53,6 +53,75 @@ class CoachingMessage:
     data_source: str  # what telemetry triggered this
     improvement_potential: float = 0.0  # estimated lap time improvement in seconds
 
+@dataclass
+class VehicleDynamicsState:
+    """Real-time vehicle dynamics analysis"""
+    timestamp: float
+    speed: float
+    gear: int
+    rpm: float
+    throttle: float
+    brake: float
+    steering_angle: float
+    lat_accel: float  # Lateral G-force
+    long_accel: float  # Longitudinal G-force
+    vert_accel: float  # Vertical G-force
+    yaw_rate: float
+    pitch: float
+    roll: float
+    weight_distribution_front: float  # Calculated front weight %
+    weight_distribution_rear: float   # Calculated rear weight %
+    aero_balance: float  # Aerodynamic balance estimation
+    track_position: float  # lapDistPct
+    corner_radius: Optional[float] = None  # Estimated corner radius
+    slip_angle: Optional[float] = None     # Estimated slip angle
+
+@dataclass 
+class GearShiftEvent:
+    """Gear shifting analysis event"""
+    timestamp: float
+    from_gear: int
+    to_gear: int
+    shift_type: str  # 'upshift', 'downshift', 'missed_shift', 'rev_match'
+    rpm_at_shift: float
+    speed_at_shift: float
+    throttle_at_shift: float
+    brake_at_shift: float
+    shift_duration: float  # Time taken for shift
+    rpm_drop: Optional[float] = None  # For upshifts
+    rpm_rise: Optional[float] = None  # For downshifts
+    engine_braking_utilized: bool = False
+    rev_matching_quality: float = 0.0  # 0-100 score
+    optimal_shift_point_delta: float = 0.0  # How far from optimal
+    track_position: float = 0.0
+    corner: Optional[str] = None
+
+@dataclass
+class WeightTransferAnalysis:
+    """Weight transfer and vehicle balance analysis"""
+    timestamp: float
+    longitudinal_transfer: float  # Forward/backward weight shift (G)
+    lateral_transfer: float       # Left/right weight shift (G)
+    front_axle_load: float       # Percentage of weight on front
+    rear_axle_load: float        # Percentage of weight on rear
+    understeer_gradient: float   # Understeer/oversteer tendency
+    grip_utilization: float      # How much of available grip is used (0-1)
+    stability_margin: float      # How close to limit (0-1)
+    braking_efficiency: float    # How efficiently brakes are used
+    traction_efficiency: float   # How efficiently throttle is used
+
+@dataclass 
+class GForceAnalysis:
+    """G-force and acceleration analysis"""
+    timestamp: float
+    peak_lat_g: float           # Peak lateral G in this sample
+    peak_long_g: float          # Peak longitudinal G in this sample
+    peak_combined_g: float      # Peak combined G-force
+    g_force_smoothness: float   # How smooth G transitions are (0-1)
+    grip_circle_utilization: float  # How much of grip circle is used
+    excessive_g_events: int     # Count of excessive G-force spikes
+    optimal_g_range: bool       # Whether G-forces are in optimal range
+    
 class LocalAICoach:
     """Local AI coaching system that learns from your driving"""
     
@@ -112,7 +181,37 @@ class LocalAICoach:
         self.recent_messages = {}  # message_text -> timestamp
         self.message_cooldown = 3.0  # Seconds before same message can be sent again
         
-        logger.info("🤖 Local AI Coach initialized - ready to learn your driving style")
+        # Advanced Vehicle Dynamics Analysis
+        self.gear_shift_history = deque(maxlen=100)  # Last 100 gear shifts
+        self.weight_transfer_history = deque(maxlen=300)  # 5 seconds at 60Hz
+        self.g_force_history = deque(maxlen=300)  # 5 seconds at 60Hz
+        self.previous_gear = 0
+        self.last_shift_time = 0
+        self.shift_in_progress = False
+        
+        # Gear shift analysis thresholds
+        self.optimal_shift_rpm_ranges = {
+            # Default ranges - will be learned per car
+            1: (6000, 7500),  # Gear 1 to 2 shift range
+            2: (6500, 7800),  # Gear 2 to 3 shift range
+            3: (6500, 7800),  # Gear 3 to 4 shift range
+            4: (6500, 7800),  # Gear 4 to 5 shift range
+            5: (6500, 7800),  # Gear 5 to 6 shift range
+            6: (6500, 7800),  # Gear 6 to 7 shift range
+        }
+        
+        # G-force and weight transfer thresholds
+        self.max_safe_lat_g = 2.5      # Maximum lateral G before warning
+        self.max_safe_long_g = 2.0     # Maximum longitudinal G before warning
+        self.smooth_g_threshold = 0.5  # G-force change rate for smoothness
+        
+        # Vehicle dynamics baseline (learned over time)
+        self.vehicle_mass_kg = 1200    # Estimated vehicle mass (GT3 typical)
+        self.wheelbase_m = 2.7         # Estimated wheelbase
+        self.track_width_m = 1.9       # Estimated track width
+        self.cg_height_m = 0.4         # Estimated center of gravity height
+        
+        logger.info("🤖 Local AI Coach initialized with advanced dynamics analysis - ready to learn your driving style")
     
     def _initialize_corner_names(self) -> Dict[float, str]:
         """Initialize track-specific corner names based on lap distance percentage"""
@@ -169,6 +268,11 @@ class LocalAICoach:
             # Vehicle dynamics analysis for oversteer/understeer detection
             self._analyze_vehicle_dynamics(telemetry)
             
+            # Advanced vehicle dynamics analysis
+            self._analyze_gear_shifting(telemetry)
+            self._analyze_weight_transfer(telemetry)
+            self._analyze_g_forces(telemetry)
+            
             # Generate coaching messages
             messages = []
             
@@ -186,6 +290,11 @@ class LocalAICoach:
             
             # Vehicle dynamics coaching (oversteer/understeer)
             messages.extend(self._generate_handling_coaching(telemetry))
+            
+            # Advanced vehicle dynamics coaching
+            messages.extend(self._generate_gear_shift_coaching(telemetry))
+            messages.extend(self._generate_weight_transfer_coaching(telemetry))
+            messages.extend(self._generate_g_force_coaching(telemetry))
             
             # Immediate feedback - tire/brake pattern analysis
             messages.extend(self._analyze_tire_management(telemetry))
@@ -1407,5 +1516,551 @@ class LocalAICoach:
                         data_source=f"understeer_analysis_{corner}",
                         improvement_potential=0.08
                     ))
+        
+        return messages
+    
+    def _analyze_gear_shifting(self, telemetry: Dict[str, Any]):
+        """Analyze gear shifting patterns and technique"""
+        try:
+            current_gear = telemetry.get('gear', 0)
+            current_rpm = telemetry.get('rpm', 0)
+            current_speed = telemetry.get('speed', 0)
+            current_throttle = telemetry.get('throttle', 0)
+            current_brake = telemetry.get('brake', 0)
+            current_time = time.time()
+            track_position = telemetry.get('lapDistPct', 0)
+            
+            # Detect gear changes
+            if hasattr(self, 'previous_gear') and current_gear != self.previous_gear:
+                if self.previous_gear > 0 and current_gear > 0:  # Valid gear change
+                    
+                    shift_type = "upshift" if current_gear > self.previous_gear else "downshift"
+                    shift_duration = current_time - self.last_shift_time if hasattr(self, 'last_shift_time') else 0
+                    
+                    # Calculate RPM changes
+                    rpm_drop = None
+                    rpm_rise = None
+                    
+                    if shift_type == "upshift":
+                        # For upshifts, we expect RPM to drop
+                        if len(self.telemetry_buffer) >= 2:
+                            prev_rpm = self.telemetry_buffer[-2].get('rpm', current_rpm)
+                            rpm_drop = prev_rpm - current_rpm
+                    else:
+                        # For downshifts, we expect RPM to rise
+                        if len(self.telemetry_buffer) >= 2:
+                            prev_rpm = self.telemetry_buffer[-2].get('rpm', current_rpm)
+                            rpm_rise = current_rpm - prev_rpm
+                    
+                    # Analyze rev matching for downshifts
+                    rev_matching_quality = 0.0
+                    engine_braking_utilized = False
+                    
+                    if shift_type == "downshift":
+                        # Good rev matching means smooth RPM transition
+                        if rpm_rise and 500 <= rpm_rise <= 2000:  # Reasonable RPM increase
+                            rev_matching_quality = max(0, 100 - abs(rpm_rise - 1000) / 10)
+                        
+                        # Engine braking is utilized if throttle is released during downshift
+                        engine_braking_utilized = current_throttle < 10
+                    
+                    # Calculate optimal shift point delta
+                    optimal_shift_point_delta = 0.0
+                    if shift_type == "upshift" and self.previous_gear in self.optimal_shift_rpm_ranges:
+                        optimal_min, optimal_max = self.optimal_shift_rpm_ranges[self.previous_gear]
+                        if len(self.telemetry_buffer) >= 2:
+                            shift_rpm = self.telemetry_buffer[-2].get('rpm', current_rpm)
+                            if shift_rpm < optimal_min:
+                                optimal_shift_point_delta = optimal_min - shift_rpm  # Shifted too early
+                            elif shift_rpm > optimal_max:
+                                optimal_shift_point_delta = shift_rpm - optimal_max  # Shifted too late
+                    
+                    # Create gear shift event
+                    shift_event = GearShiftEvent(
+                        timestamp=current_time,
+                        from_gear=self.previous_gear,
+                        to_gear=current_gear,
+                        shift_type=shift_type,
+                        rpm_at_shift=current_rpm,
+                        speed_at_shift=current_speed,
+                        throttle_at_shift=current_throttle,
+                        brake_at_shift=current_brake,
+                        shift_duration=shift_duration,
+                        rpm_drop=rpm_drop,
+                        rpm_rise=rpm_rise,
+                        engine_braking_utilized=engine_braking_utilized,
+                        rev_matching_quality=rev_matching_quality,
+                        optimal_shift_point_delta=optimal_shift_point_delta,
+                        track_position=track_position,
+                        corner=self.current_corner
+                    )
+                    
+                    self.gear_shift_history.append(shift_event)
+                    logger.debug(f"🔄 Gear shift: {self.previous_gear}→{current_gear} at {current_rpm}RPM")
+                
+                self.last_shift_time = current_time
+            
+            # Update optimal shift points based on performance correlation
+            self._learn_optimal_shift_points()
+            
+            self.previous_gear = current_gear
+            
+        except Exception as e:
+            logger.error(f"Error in gear shifting analysis: {e}")
+    
+    def _learn_optimal_shift_points(self):
+        """Learn optimal shift points based on lap time correlation"""
+        if len(self.gear_shift_history) < 10 or len(self.laps) < 3:
+            return
+        
+        try:
+            # Find best laps for correlation
+            if self.best_lap:
+                best_lap_time = self.best_lap.lap_time
+                recent_laps = [lap for lap in self.laps[-10:] if lap.lap_time > 0]
+                
+                if recent_laps:
+                    # Get shifts from best performing laps (within 102% of best time)
+                    good_lap_threshold = best_lap_time * 1.02
+                    
+                    for gear in range(1, 7):  # Gears 1-6
+                        upshifts_from_gear = [
+                            shift for shift in self.gear_shift_history
+                            if shift.from_gear == gear and shift.shift_type == "upshift"
+                        ]
+                        
+                        if len(upshifts_from_gear) >= 5:
+                            # Get shifts from good laps (this is simplified - would need lap correlation)
+                            good_shifts = [shift for shift in upshifts_from_gear[-20:]]  # Recent shifts
+                            
+                            if good_shifts:
+                                shift_rpms = []
+                                for shift in good_shifts:
+                                    # Reconstruct RPM at shift (simplified)
+                                    if shift.rpm_drop:
+                                        shift_rpm = shift.rpm_at_shift + shift.rpm_drop
+                                        shift_rpms.append(shift_rpm)
+                                
+                                if len(shift_rpms) >= 3:
+                                    # Update optimal range based on good shifts
+                                    avg_shift_rpm = np.mean(shift_rpms)
+                                    std_shift_rpm = np.std(shift_rpms)
+                                    
+                                    # Update optimal range (with some conservatism)
+                                    new_min = max(5000, avg_shift_rpm - std_shift_rpm)
+                                    new_max = min(8000, avg_shift_rpm + std_shift_rpm)
+                                    
+                                    # Blend with existing range
+                                    if gear in self.optimal_shift_rpm_ranges:
+                                        old_min, old_max = self.optimal_shift_rpm_ranges[gear]
+                                        blended_min = (old_min * 0.7) + (new_min * 0.3)
+                                        blended_max = (old_max * 0.7) + (new_max * 0.3)
+                                        self.optimal_shift_rpm_ranges[gear] = (blended_min, blended_max)
+                                    else:
+                                        self.optimal_shift_rpm_ranges[gear] = (new_min, new_max)
+                                    
+                                    logger.debug(f"📊 Updated optimal shift range for gear {gear}: {self.optimal_shift_rpm_ranges[gear]}")
+        
+        except Exception as e:
+            logger.error(f"Error learning optimal shift points: {e}")
+    
+    def _analyze_weight_transfer(self, telemetry: Dict[str, Any]):
+        """Analyze weight transfer and vehicle balance"""
+        try:
+            lat_accel = telemetry.get('latAccel', 0)  # Lateral G-force
+            long_accel = telemetry.get('longAccel', 0)  # Longitudinal G-force
+            current_time = time.time()
+            speed = telemetry.get('speed', 0)
+            brake = telemetry.get('brake', 0)
+            throttle = telemetry.get('throttle', 0)
+            
+            # Calculate weight transfer based on G-forces
+            # Longitudinal weight transfer (braking/acceleration)
+            # Positive long_accel = acceleration (weight to rear)
+            # Negative long_accel = braking (weight to front)
+            longitudinal_transfer = long_accel  # Direct correlation
+            
+            # Lateral weight transfer (cornering)
+            # Positive lat_accel = right turn (weight to left)
+            # Negative lat_accel = left turn (weight to right)
+            lateral_transfer = lat_accel
+            
+            # Estimate axle load distribution (simplified physics model)
+            # Base distribution (typically 45% front, 55% rear for GT3)
+            base_front_load = 0.45
+            base_rear_load = 0.55
+            
+            # Weight transfer affects distribution
+            # Under braking: more weight to front
+            # Under acceleration: more weight to rear
+            weight_transfer_factor = long_accel * 0.1  # Scale factor
+            front_axle_load = base_front_load - weight_transfer_factor
+            rear_axle_load = base_rear_load + weight_transfer_factor
+            
+            # Clamp values to realistic ranges
+            front_axle_load = max(0.35, min(0.65, front_axle_load))
+            rear_axle_load = 1.0 - front_axle_load
+            
+            # Calculate understeer gradient (simplified)
+            # Higher front load relative to rear can increase understeer
+            understeer_gradient = (front_axle_load - 0.45) * 2.0  # Normalized
+            
+            # Calculate grip utilization (how much of available grip is used)
+            combined_g = np.sqrt(lat_accel**2 + long_accel**2)
+            max_theoretical_g = 2.5  # Typical GT3 maximum
+            grip_utilization = min(1.0, combined_g / max_theoretical_g)
+            
+            # Calculate stability margin (how close to limit)
+            stability_margin = max(0.0, 1.0 - grip_utilization)
+            
+            # Calculate efficiency metrics
+            braking_efficiency = 1.0  # Default
+            if brake > 10 and speed > 20:
+                # Braking efficiency based on G-force vs brake input
+                expected_g = (brake / 100.0) * 1.5  # Expected G for brake input
+                if abs(long_accel) > 0.1:
+                    braking_efficiency = min(1.0, abs(long_accel) / expected_g)
+            
+            traction_efficiency = 1.0  # Default
+            if throttle > 10 and speed > 20:
+                # Traction efficiency based on G-force vs throttle input
+                expected_g = (throttle / 100.0) * 1.2  # Expected G for throttle input
+                if long_accel > 0.1:
+                    traction_efficiency = min(1.0, long_accel / expected_g)
+            
+            # Create weight transfer analysis
+            weight_analysis = WeightTransferAnalysis(
+                timestamp=current_time,
+                longitudinal_transfer=longitudinal_transfer,
+                lateral_transfer=lateral_transfer,
+                front_axle_load=front_axle_load,
+                rear_axle_load=rear_axle_load,
+                understeer_gradient=understeer_gradient,
+                grip_utilization=grip_utilization,
+                stability_margin=stability_margin,
+                braking_efficiency=braking_efficiency,
+                traction_efficiency=traction_efficiency
+            )
+            
+            self.weight_transfer_history.append(weight_analysis)
+            
+        except Exception as e:
+            logger.error(f"Error in weight transfer analysis: {e}")
+    
+    def _analyze_g_forces(self, telemetry: Dict[str, Any]):
+        """Analyze G-forces and acceleration patterns"""
+        try:
+            lat_accel = telemetry.get('latAccel', 0)
+            long_accel = telemetry.get('longAccel', 0)
+            vert_accel = telemetry.get('vertAccel', 0)
+            current_time = time.time()
+            
+            # Calculate combined G-force
+            combined_g = np.sqrt(lat_accel**2 + long_accel**2)
+            
+            # Analyze G-force smoothness over recent samples
+            g_force_smoothness = 1.0  # Default to smooth
+            excessive_g_events = 0
+            
+            if len(self.g_force_history) > 5:
+                # Get recent G-force values
+                recent_combined_g = [analysis.peak_combined_g for analysis in list(self.g_force_history)[-5:]]
+                recent_combined_g.append(combined_g)
+                
+                # Calculate smoothness (lower variance = smoother)
+                g_variance = np.var(recent_combined_g)
+                g_force_smoothness = max(0.0, 1.0 - (g_variance * 2.0))  # Scale factor
+                
+                # Count excessive G-force spikes
+                for g in recent_combined_g:
+                    if g > self.max_safe_lat_g:
+                        excessive_g_events += 1
+            
+            # Calculate grip circle utilization
+            # The "grip circle" represents maximum available grip
+            max_lat_g = 2.5   # Typical GT3 lateral limit
+            max_long_g = 2.0  # Typical GT3 longitudinal limit
+            
+            # Normalize G-forces to grip circle
+            normalized_lat = lat_accel / max_lat_g
+            normalized_long = long_accel / max_long_g
+            grip_circle_utilization = min(1.0, np.sqrt(normalized_lat**2 + normalized_long**2))
+            
+            # Determine if G-forces are in optimal range
+            optimal_g_range = (0.5 <= combined_g <= 2.0)  # Sweet spot for GT3 cars
+            
+            # Create G-force analysis
+            g_analysis = GForceAnalysis(
+                timestamp=current_time,
+                peak_lat_g=abs(lat_accel),
+                peak_long_g=abs(long_accel),
+                peak_combined_g=combined_g,
+                g_force_smoothness=g_force_smoothness,
+                grip_circle_utilization=grip_circle_utilization,
+                excessive_g_events=excessive_g_events,
+                optimal_g_range=optimal_g_range
+            )
+            
+            self.g_force_history.append(g_analysis)
+            
+        except Exception as e:
+            logger.error(f"Error in G-force analysis: {e}")
+    
+    def _generate_gear_shift_coaching(self, telemetry: Dict[str, Any]) -> List[CoachingMessage]:
+        """Generate coaching messages for gear shifting technique"""
+        messages = []
+        
+        if len(self.gear_shift_history) < 3:
+            return messages
+        
+        current_time = time.time()
+        current_gear = telemetry.get('gear', 0)
+        current_rpm = telemetry.get('rpm', 0)
+        
+        # Analyze recent gear shifts
+        recent_shifts = [shift for shift in self.gear_shift_history 
+                        if current_time - shift.timestamp < 30.0]  # Last 30 seconds
+        
+        if not recent_shifts:
+            return messages
+        
+        # Check for suboptimal shift timing
+        early_shifts = [s for s in recent_shifts 
+                       if s.shift_type == "upshift" and s.optimal_shift_point_delta < -500]
+        late_shifts = [s for s in recent_shifts 
+                      if s.shift_type == "upshift" and s.optimal_shift_point_delta > 500]
+        
+        if len(early_shifts) >= 2:
+            avg_delta = np.mean([abs(s.optimal_shift_point_delta) for s in early_shifts])
+            messages.append(CoachingMessage(
+                message=f"Shifting too early - try shifting {avg_delta:.0f} RPM higher for more power",
+                category="gear_shifting",
+                priority=6,
+                confidence=80,
+                data_source="shift_timing",
+                improvement_potential=0.05
+            ))
+        
+        if len(late_shifts) >= 2:
+            avg_delta = np.mean([s.optimal_shift_point_delta for s in late_shifts])
+            messages.append(CoachingMessage(
+                message=f"Shifting too late - shift {avg_delta:.0f} RPM earlier to stay in power band",
+                category="gear_shifting",
+                priority=6,
+                confidence=80,
+                data_source="shift_timing",
+                improvement_potential=0.03
+            ))
+        
+        # Check for poor rev matching on downshifts
+        downshifts = [s for s in recent_shifts if s.shift_type == "downshift"]
+        poor_rev_matching = [s for s in downshifts if s.rev_matching_quality < 60]
+        
+        if len(poor_rev_matching) >= 2:
+            avg_quality = np.mean([s.rev_matching_quality for s in poor_rev_matching])
+            messages.append(CoachingMessage(
+                message=f"Rev matching could improve - try blipping throttle on downshifts for smoother transitions",
+                category="gear_shifting", 
+                priority=5,
+                confidence=75,
+                data_source="rev_matching",
+                improvement_potential=0.02
+            ))
+        
+        # Check for missed engine braking opportunities
+        missed_engine_braking = [s for s in downshifts 
+                               if not s.engine_braking_utilized and s.brake_at_shift > 30]
+        
+        if len(missed_engine_braking) >= 2:
+            messages.append(CoachingMessage(
+                message="Use engine braking more - downshift earlier to help slow the car",
+                category="gear_shifting",
+                priority=4,
+                confidence=70,
+                data_source="engine_braking",
+                improvement_potential=0.08
+            ))
+        
+        # Real-time shift point coaching
+        if current_gear in self.optimal_shift_rpm_ranges and current_rpm > 0:
+            optimal_min, optimal_max = self.optimal_shift_rpm_ranges[current_gear]
+            
+            if current_rpm > optimal_max + 200:  # Significantly over optimal
+                messages.append(CoachingMessage(
+                    message=f"Shift up now - you're {current_rpm - optimal_max:.0f} RPM past optimal shift point",
+                    category="gear_shifting",
+                    priority=7,
+                    confidence=85,
+                    data_source="real_time_shift",
+                    improvement_potential=0.02
+                ))
+        
+        return messages
+    
+    def _generate_weight_transfer_coaching(self, telemetry: Dict[str, Any]) -> List[CoachingMessage]:
+        """Generate coaching messages for weight transfer and vehicle balance"""
+        messages = []
+        
+        if len(self.weight_transfer_history) < 10:
+            return messages
+        
+        current_time = time.time()
+        
+        # Analyze recent weight transfer data
+        recent_analysis = [analysis for analysis in self.weight_transfer_history 
+                          if current_time - analysis.timestamp < 10.0]  # Last 10 seconds
+        
+        if not recent_analysis:
+            return messages
+        
+        # Check for poor braking efficiency
+        poor_braking = [a for a in recent_analysis if a.braking_efficiency < 0.7]
+        if len(poor_braking) > len(recent_analysis) * 0.5:  # More than 50% poor braking
+            avg_efficiency = np.mean([a.braking_efficiency for a in poor_braking])
+            messages.append(CoachingMessage(
+                message=f"Braking efficiency low ({avg_efficiency:.1%}) - try progressive braking for better weight transfer",
+                category="weight_transfer",
+                priority=6,
+                confidence=75,
+                data_source="braking_efficiency",
+                improvement_potential=0.1
+            ))
+        
+        # Check for poor traction efficiency
+        poor_traction = [a for a in recent_analysis if a.traction_efficiency < 0.7]
+        if len(poor_traction) > len(recent_analysis) * 0.5:
+            avg_efficiency = np.mean([a.traction_efficiency for a in poor_traction])
+            messages.append(CoachingMessage(
+                message=f"Traction efficiency low ({avg_efficiency:.1%}) - smoother throttle application will help",
+                category="weight_transfer",
+                priority=6,
+                confidence=75,
+                data_source="traction_efficiency",
+                improvement_potential=0.08
+            ))
+        
+        # Check for excessive understeer tendency
+        current_analysis = recent_analysis[-1] if recent_analysis else None
+        if current_analysis and current_analysis.understeer_gradient > 0.3:
+            messages.append(CoachingMessage(
+                message="Weight distribution favoring understeer - try later braking or trail braking",
+                category="weight_transfer",
+                priority=5,
+                confidence=70,
+                data_source="understeer_gradient",
+                improvement_potential=0.06
+            ))
+        
+        # Check for low grip utilization (not using available grip)
+        recent_grip_usage = [a.grip_utilization for a in recent_analysis]
+        avg_grip_usage = np.mean(recent_grip_usage)
+        
+        if avg_grip_usage < 0.6:  # Less than 60% grip utilization
+            messages.append(CoachingMessage(
+                message=f"Only using {avg_grip_usage:.1%} of available grip - you can push harder",
+                category="weight_transfer",
+                priority=4,
+                confidence=65,
+                data_source="grip_utilization",
+                improvement_potential=0.15
+            ))
+        
+        # Check for very low stability margin (near limit)
+        if current_analysis and current_analysis.stability_margin < 0.1:
+            messages.append(CoachingMessage(
+                message="Very close to grip limit - back off slightly for safety margin",
+                category="weight_transfer",
+                priority=8,
+                confidence=90,
+                data_source="stability_margin",
+                improvement_potential=-0.05  # Negative = safety over speed
+            ))
+        
+        return messages
+    
+    def _generate_g_force_coaching(self, telemetry: Dict[str, Any]) -> List[CoachingMessage]:
+        """Generate coaching messages for G-force and acceleration patterns"""
+        messages = []
+        
+        if len(self.g_force_history) < 5:
+            return messages
+        
+        current_time = time.time()
+        
+        # Analyze recent G-force data
+        recent_analysis = [analysis for analysis in self.g_force_history 
+                          if current_time - analysis.timestamp < 5.0]  # Last 5 seconds
+        
+        if not recent_analysis:
+            return messages
+        
+        current_analysis = recent_analysis[-1]
+        
+        # Check for excessive G-forces
+        if current_analysis.excessive_g_events > 0:
+            messages.append(CoachingMessage(
+                message=f"Excessive G-forces detected - smooth out your inputs for better tire grip",
+                category="g_forces",
+                priority=7,
+                confidence=85,
+                data_source="excessive_g",
+                improvement_potential=0.1
+            ))
+        
+        # Check for poor G-force smoothness
+        avg_smoothness = np.mean([a.g_force_smoothness for a in recent_analysis])
+        if avg_smoothness < 0.6:
+            messages.append(CoachingMessage(
+                message=f"G-force transitions are rough ({avg_smoothness:.1%}) - focus on smoother inputs",
+                category="g_forces",
+                priority=6,
+                confidence=80,
+                data_source="g_smoothness",
+                improvement_potential=0.08
+            ))
+        
+        # Check grip circle utilization
+        avg_grip_circle = np.mean([a.grip_circle_utilization for a in recent_analysis])
+        
+        if avg_grip_circle < 0.5:  # Less than 50% of grip circle used
+            messages.append(CoachingMessage(
+                message=f"Only using {avg_grip_circle:.1%} of grip circle - you can brake/accelerate harder",
+                category="g_forces",
+                priority=4,
+                confidence=70,
+                data_source="grip_circle",
+                improvement_potential=0.12
+            ))
+        elif avg_grip_circle > 0.95:  # Very close to limit
+            messages.append(CoachingMessage(
+                message=f"Using {avg_grip_circle:.1%} of grip circle - excellent commitment!",
+                category="g_forces",
+                priority=2,
+                confidence=85,
+                data_source="grip_circle_positive"
+            ))
+        
+        # Check if G-forces are in optimal range
+        in_optimal_range = [a for a in recent_analysis if a.optimal_g_range]
+        if len(in_optimal_range) < len(recent_analysis) * 0.3:  # Less than 30% in optimal range
+            messages.append(CoachingMessage(
+                message="G-forces often outside optimal range - focus on consistent 1-2G in corners",
+                category="g_forces",
+                priority=5,
+                confidence=75,
+                data_source="g_range",
+                improvement_potential=0.06
+            ))
+        
+        # Real-time G-force warnings
+        if current_analysis.peak_combined_g > self.max_safe_lat_g:
+            messages.append(CoachingMessage(
+                message=f"High G-forces ({current_analysis.peak_combined_g:.1f}G) - ease off to prevent tire overheating",
+                category="g_forces",
+                priority=8,
+                confidence=90,
+                data_source="high_g_warning",
+                improvement_potential=0.0
+            ))
         
         return messages

@@ -61,6 +61,7 @@ class LocalAICoach:
         self.current_lap_data = {}
         self.best_lap: Optional[LapData] = None
         self.baseline_established = False
+        self.baseline_just_established = False  # Flag for showing congratulatory message
         self.session_start_time = time.time()
         
         # AI Learning Parameters
@@ -101,6 +102,12 @@ class LocalAICoach:
             
             # Generate coaching messages
             messages = []
+            
+            # Show baseline countdown if not established yet
+            if not self.baseline_established:
+                countdown_message = self._generate_baseline_countdown(telemetry)
+                if countdown_message:
+                    messages.append(countdown_message)
             
             # Immediate feedback (works from lap 1) - tire/brake pattern analysis
             messages.extend(self._analyze_tire_management(telemetry))
@@ -184,6 +191,7 @@ class LocalAICoach:
             if len(self.laps) >= 3 and not self.baseline_established:
                 self._establish_baseline()
                 self.baseline_established = True
+                self.baseline_just_established = True  # Flag for congratulatory message
                 logger.info("📊 AI baseline established - advanced coaching now available")
             
             # Learn from this lap
@@ -290,6 +298,48 @@ class LocalAICoach:
         elif improvement_rate < -0.01:  # Getting slower
             self.consistency_threshold *= 1.05  # Be more forgiving
             logger.info("📉 Performance declining - adjusting coaching approach")
+    
+    def _generate_baseline_countdown(self, telemetry: Dict[str, Any]) -> Optional[CoachingMessage]:
+        """Generate countdown message showing laps remaining until baseline is established"""
+        # Only show during active driving (not while stationary)
+        speed = telemetry.get('speed', 0)
+        if speed < 10:  # Only show when actually driving
+            return None
+        
+        # Show congratulatory message when baseline was just established
+        if self.baseline_just_established:
+            self.baseline_just_established = False  # Reset flag after showing message
+            return CoachingMessage(
+                message="🎉 AI Baseline established! Advanced coaching now active - I'm learning your driving style!",
+                category="baseline",
+                priority=8,  # High priority for congratulatory message
+                confidence=100.0,
+                data_source="baseline_completion"
+            )
+        
+        # Show countdown if baseline not yet established
+        if not self.baseline_established:
+            completed_laps = len(self.laps)
+            laps_needed = 3
+            laps_remaining = max(0, laps_needed - completed_laps)
+            
+            if laps_remaining > 0:
+                if completed_laps == 0:
+                    message = f"🏁 Complete {laps_remaining} laps to establish AI baseline for advanced coaching"
+                elif laps_remaining == 1:
+                    message = f"🏁 Just {laps_remaining} more lap needed for AI baseline! Keep driving..."
+                else:
+                    message = f"🏁 {laps_remaining} more laps needed for AI baseline ({completed_laps}/{laps_needed} completed)"
+                
+                return CoachingMessage(
+                    message=message,
+                    category="baseline",
+                    priority=3,  # Medium priority - informative but not urgent
+                    confidence=100.0,
+                    data_source="lap_tracking"
+                )
+        
+        return None
     
     def _generate_general_tips(self, telemetry: Dict[str, Any]) -> List[CoachingMessage]:
         """Generate general coaching tips that don't require specific driving data"""

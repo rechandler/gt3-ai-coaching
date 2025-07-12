@@ -17,6 +17,12 @@ import io
 import threading
 import queue
 import random
+import os
+import pickle
+from datetime import datetime, timedelta
+import requests
+import asyncio
+from pathlib import Path
 
 # Fix Windows Unicode encoding issues
 if sys.platform == 'win32':
@@ -272,7 +278,17 @@ Keep response under 300 words, be specific and actionable.
 class LocalAICoach:
     """Local AI coaching system that learns from your driving"""
     
-    def __init__(self):
+    def __init__(self, data_dir: str = "coaching_data"):
+        # Session persistence
+        self.data_dir = data_dir
+        self.current_session: Optional[SessionData] = None
+        self.track_name = "unknown"
+        self.car_name = "unknown"
+        
+        # Create data directory if it doesn't exist
+        os.makedirs(self.data_dir, exist_ok=True)
+        
+        # Lap data
         self.laps: List[LapData] = []
         self.current_lap_data = {}
         self.best_lap: Optional[LapData] = None
@@ -370,7 +386,7 @@ class LocalAICoach:
         self.current_issues = deque(maxlen=10)            # Track current driving issues
         self.communication_style = "balanced"             # Driver's preferred style
         
-        logger.info("🤖 Local AI Coach initialized with advanced dynamics analysis - ready to learn your driving style")
+        logger.info("🤖 Local AI Coach initialized with session persistence - ready to learn your driving style")
     
     def enable_llm_coaching(self, model: str = "llama3.1:8b", base_url: str = "http://localhost:11434"):
         """Enable LLM-powered natural language coaching"""
@@ -1169,7 +1185,7 @@ class LocalAICoach:
         if len(lap_times) >= 3:
             avg_time = np.mean(lap_times)
             std_time = np.std(lap_times)
-            consistency = std_time / avg_time if avg_time > 0 else 0
+            consistency = std_time / avg_time if avg_time > 0 : 0
             
             if consistency > self.consistency_threshold * 2:  # Poor consistency
                 messages.append(CoachingMessage(
@@ -1686,17 +1702,7 @@ class LocalAICoach:
         # Understeer coaching
         if corner and corner in self.understeer_events:
             recent_understeer = [e for e in self.understeer_events[corner] 
-                               if current_time - e['timestamp'] < 30.0]  # Last 30 seconds
-            
-            if len(recent_understeer) >= 2:  # Multiple understeer events recently
-                # Analyze pattern
-                high_speed_understeer = sum(1 for e in recent_understeer if e['speed'] > 60)
-                on_throttle_understeer = sum(1 for e in recent_understeer if e['throttle'] > 50)
-                
-                if high_speed_understeer >= len(recent_understeer) * 0.7:  # High speed understeer
-                    messages.append(CoachingMessage(
-                        message=f"High-speed understeer in {corner} - reduce entry speed or trail brake",
-                        category="handling",
+                        category="handling,
                         priority=8,
                         confidence=85,
                         data_source=f"understeer_analysis_{corner}",
@@ -2385,21 +2391,373 @@ Enable LLM integration for detailed analysis and personalized coaching advice.
                 if improvement not in self.recent_improvements:
                     self.recent_improvements.append(improvement)
 
-# Example usage with LLM integration:
-"""
-# Basic usage (fast system only)
-coach = LocalAICoach()
-messages = coach.process_telemetry(telemetry_data)
+@dataclass
+class SessionData:
+    """Persistent session data that can be saved/loaded"""
+    track_name: str
+    car_name: str
+    session_id: str
+    created_at: datetime
+    last_updated: datetime
+    total_laps: int
+    best_lap_time: Optional[float]
+    baseline_established: bool
+    driving_style: str
+    coaching_intensity: float
+    
+    # Performance data
+    lap_times: List[float] = field(default_factory=list)
+    corner_analysis_data: Dict = field(default_factory=dict)
+    track_learning_data: Dict = field(default_factory=dict)
+    optimal_shift_ranges: Dict = field(default_factory=dict)
+    
+    # Learning parameters
+    consistency_threshold: float = 0.05
+    brake_point_history: Dict = field(default_factory=dict)
+    speed_history: Dict = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            'track_name': self.track_name,
+            'car_name': self.car_name,
+            'session_id': self.session_id,
+            'created_at': self.created_at.isoformat(),
+            'last_updated': self.last_updated.isoformat(),
+            'total_laps': self.total_laps,
+            'best_lap_time': self.best_lap_time,
+            'baseline_established': self.baseline_established,
+            'driving_style': self.driving_style,
+            'coaching_intensity': self.coaching_intensity,
+            'lap_times': self.lap_times,
+            'corner_analysis_data': self.corner_analysis_data,
+            'track_learning_data': self.track_learning_data,
+            'optimal_shift_ranges': self.optimal_shift_ranges,
+            'consistency_threshold': self.consistency_threshold,
+            'brake_point_history': self.brake_point_history,
+            'speed_history': self.speed_history
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SessionData':
+        """Create from dictionary"""
+        return cls(
+            track_name=data['track_name'],
+            car_name=data['car_name'],
+            session_id=data['session_id'],
+            created_at=datetime.fromisoformat(data['created_at']),
+            last_updated=datetime.fromisoformat(data['last_updated']),
+            total_laps=data['total_laps'],
+            best_lap_time=data.get('best_lap_time'),
+            baseline_established=data['baseline_established'],
+            driving_style=data['driving_style'],
+            coaching_intensity=data['coaching_intensity'],
+            lap_times=data.get('lap_times', []),
+            corner_analysis_data=data.get('corner_analysis_data', {}),
+            track_learning_data=data.get('track_learning_data', {}),
+            optimal_shift_ranges=data.get('optimal_shift_ranges', {}),
+            consistency_threshold=data.get('consistency_threshold', 0.05),
+            brake_point_history=data.get('brake_point_history', {}),
+            speed_history=data.get('speed_history', {})
+        )
 
-# Enhanced usage with LLM
-coach = LocalAICoach()
-coach.enable_llm_coaching(model="llama3.1:8b")  # or "phi-3-mini" for faster responses
-coach.set_communication_style("supportive")      # "technical", "motivational", "balanced"
-
-# Process telemetry (now with enhanced messages)
-enhanced_messages = coach.process_telemetry(telemetry_data)
-
-# Generate session report
-session_analysis = coach.generate_session_report()
-print(session_analysis)
-"""
+class SessionManager:
+    """Manages session persistence with local-first, cloud-sync approach"""
+    
+    def __init__(self, data_dir: str = "coaching_data", cloud_sync_enabled: bool = False):
+        self.data_dir = Path(data_dir)
+        self.data_dir.mkdir(exist_ok=True)
+        
+        # Cloud sync configuration
+        self.cloud_sync_enabled = cloud_sync_enabled
+        self.cloud_api_base = "https://api.gt3coaching.com"  # Replace with your API
+        self.cloud_api_key = os.getenv('GT3_COACHING_API_KEY')
+        self.sync_queue = queue.Queue()
+        
+        # Local session cache
+        self.sessions_index_file = self.data_dir / "sessions_index.json"
+        self.sessions_cache: Dict[str, SessionData] = {}
+        
+        # Background sync thread
+        if self.cloud_sync_enabled and self.cloud_api_key:
+            self.sync_thread = threading.Thread(target=self._background_sync_worker, daemon=True)
+            self.sync_thread.start()
+            logger.info("🌩️ Cloud sync enabled - sessions will backup automatically")
+        else:
+            logger.info("📁 Local-only mode - sessions saved locally")
+        
+        # Load existing sessions index
+        self._load_sessions_index()
+    
+    def _load_sessions_index(self):
+        """Load the index of available sessions"""
+        try:
+            if self.sessions_index_file.exists():
+                with open(self.sessions_index_file, 'r') as f:
+                    sessions_data = json.load(f)
+                    for session_id, session_info in sessions_data.items():
+                        # Load basic session info for quick access
+                        self.sessions_cache[session_id] = {
+                            'track_name': session_info['track_name'],
+                            'car_name': session_info['car_name'],
+                            'last_updated': datetime.fromisoformat(session_info['last_updated']),
+                            'total_laps': session_info['total_laps'],
+                            'baseline_established': session_info['baseline_established']
+                        }
+                logger.info(f"📚 Loaded {len(self.sessions_cache)} previous sessions")
+        except Exception as e:
+            logger.warning(f"Could not load sessions index: {e}")
+            self.sessions_cache = {}
+    
+    def save_session(self, session: SessionData) -> bool:
+        """Save session locally and queue for cloud sync"""
+        try:
+            # Update timestamp
+            session.last_updated = datetime.now()
+            
+            # Save locally first (reliability)
+            session_file = self.data_dir / f"{session.session_id}.json"
+            with open(session_file, 'w') as f:
+                json.dump(session.to_dict(), f, indent=2)
+            
+            # Update sessions index
+            self._update_sessions_index(session)
+            
+            # Queue for cloud sync if enabled
+            if self.cloud_sync_enabled:
+                self.sync_queue.put(('save', session))
+            
+            logger.info(f"💾 Session saved: {session.track_name} ({session.total_laps} laps)")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save session: {e}")
+            return False
+    
+    def load_session(self, session_id: str) -> Optional[SessionData]:
+        """Load session from local storage first, fallback to cloud"""
+        try:
+            # Try local first
+            session_file = self.data_dir / f"{session_id}.json"
+            if session_file.exists():
+                with open(session_file, 'r') as f:
+                    data = json.load(f)
+                    session = SessionData.from_dict(data)
+                    logger.info(f"📂 Loaded local session: {session.track_name} ({session.total_laps} laps)")
+                    return session
+            
+            # Fallback to cloud if enabled
+            if self.cloud_sync_enabled:
+                return self._load_from_cloud(session_id)
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to load session {session_id}: {e}")
+            return None
+    
+    def find_sessions(self, track_name: str = None, car_name: str = None) -> List[Dict[str, Any]:
+]:
+        """Find sessions matching criteria"""
+        matching_sessions = []
+        
+        for session_id, session_info in self.sessions_cache.items():
+            if track_name and session_info['track_name'].lower() != track_name.lower():
+                continue
+            if car_name and session_info['car_name'].lower() != car_name.lower():
+                continue
+            
+            matching_sessions.append({
+                'session_id': session_id,
+                'track_name': session_info['track_name'],
+                'car_name': session_info['car_name'],
+                'last_updated': session_info['last_updated'],
+                'total_laps': session_info['total_laps'],
+                'baseline_established': session_info['baseline_established']
+            })
+        
+        # Sort by most recent first
+        matching_sessions.sort(key=lambda x: x['last_updated'], reverse=True)
+        return matching_sessions
+    
+    def delete_session(self, session_id: str) -> bool:
+        """Delete session locally and from cloud"""
+        try:
+            # Delete local file
+            session_file = self.data_dir / f"{session_id}.json"
+            if session_file.exists():
+                session_file.unlink()
+            
+            # Remove from cache
+            if session_id in self.sessions_cache:
+                del self.sessions_cache[session_id]
+            
+            # Update index
+            self._save_sessions_index()
+            
+            # Queue cloud deletion
+            if self.cloud_sync_enabled:
+                self.sync_queue.put(('delete', session_id))
+            
+            logger.info(f"🗑️ Session deleted: {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to delete session {session_id}: {e}")
+            return False
+    
+    def _update_sessions_index(self, session: SessionData):
+        """Update the sessions index file"""
+        self.sessions_cache[session.session_id] = {
+            'track_name': session.track_name,
+            'car_name': session.car_name,
+            'last_updated': session.last_updated,
+            'total_laps': session.total_laps,
+            'baseline_established': session.baseline_established
+        }
+        self._save_sessions_index()
+    
+    def _save_sessions_index(self):
+        """Save the sessions index to disk"""
+        try:
+            index_data = {}
+            for session_id, session_info in self.sessions_cache.items():
+                index_data[session_id] = {
+                    'track_name': session_info['track_name'],
+                    'car_name': session_info['car_name'],
+                    'last_updated': session_info['last_updated'].isoformat(),
+                    'total_laps': session_info['total_laps'],
+                    'baseline_established': session_info['baseline_established']
+                }
+            
+            with open(self.sessions_index_file, 'w') as f:
+                json.dump(index_data, f, indent=2)
+                
+        except Exception as e:
+            logger.error(f"Failed to save sessions index: {e}")
+    
+    def _background_sync_worker(self):
+        """Background thread for cloud synchronization"""
+        while True:
+            try:
+                # Wait for sync tasks (non-blocking with timeout)
+                try:
+                    action, data = self.sync_queue.get(timeout=30)
+                except queue.Empty:
+                    continue
+                
+                if action == 'save':
+                    self._sync_to_cloud(data)
+                elif action == 'delete':
+                    self._delete_from_cloud(data)
+                
+                self.sync_queue.task_done()
+                
+            except Exception as e:
+                logger.warning(f"Cloud sync error: {e}")
+                time.sleep(5)  # Wait before retrying
+    
+    def _sync_to_cloud(self, session: SessionData) -> bool:
+        """Upload session to cloud storage"""
+        if not self.cloud_api_key:
+            return False
+        
+        try:
+            headers = {
+                'Authorization': f'Bearer {self.cloud_api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            response = requests.post(
+                f"{self.cloud_api_base}/sessions",
+                json=session.to_dict(),
+                headers=headers,
+                timeout=10
+            )
+            
+            if response.status_code in [200, 201]:
+                logger.debug(f"☁️ Session synced to cloud: {session.session_id}")
+                return True
+            else:
+                logger.warning(f"Cloud sync failed: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            logger.warning(f"Cloud sync error: {e}")
+            return False
+    
+    def _load_from_cloud(self, session_id: str) -> Optional[SessionData]:
+        """Load session from cloud storage"""
+        if not self.cloud_api_key:
+            return None
+        
+        try:
+            headers = {'Authorization': f'Bearer {self.cloud_api_key}'}
+            
+            response = requests.get(
+                f"{self.cloud_api_base}/sessions/{session_id}",
+                headers=headers,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                session = SessionData.from_dict(data)
+                
+                # Cache locally for faster future access
+                session_file = self.data_dir / f"{session_id}.json"
+                with open(session_file, 'w') as f:
+                    json.dump(data, f, indent=2)
+                
+                logger.info(f"☁️ Session downloaded from cloud: {session.track_name}")
+                return session
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Cloud load error: {e}")
+            return None
+    
+    def _delete_from_cloud(self, session_id: str) -> bool:
+        """Delete session from cloud storage"""
+        if not self.cloud_api_key:
+            return False
+        
+        try:
+            headers = {'Authorization': f'Bearer {self.cloud_api_key}'}
+            
+            response = requests.delete(
+                f"{self.cloud_api_base}/sessions/{session_id}",
+                headers=headers,
+                timeout=10
+            )
+            
+            if response.status_code in [200, 204]:
+                logger.debug(f"☁️ Session deleted from cloud: {session_id}")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.warning(f"Cloud delete error: {e}")
+            return False
+    
+    def enable_cloud_sync(self, api_key: str, api_base: str = None):
+        """Enable cloud synchronization"""
+        self.cloud_api_key = api_key
+        if api_base:
+            self.cloud_api_base = api_base
+        
+        self.cloud_sync_enabled = True
+        
+        # Start sync thread if not already running
+        if not hasattr(self, 'sync_thread') or not self.sync_thread.is_alive():
+            self.sync_thread = threading.Thread(target=self._background_sync_worker, daemon=True)
+            self.sync_thread.start()
+        
+        logger.info("🌩️ Cloud sync enabled")
+    
+    def disable_cloud_sync(self):
+        """Disable cloud synchronization"""
+        self.cloud_sync_enabled = False
+        logger.info("📁 Cloud sync disabled - local only mode")

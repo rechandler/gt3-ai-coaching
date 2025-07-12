@@ -498,6 +498,21 @@ class GT3TelemetryServer:
                 # Track and car status
                 'playerTrackSurface': 'PlayerTrackSurface',  # Add track surface
                 
+                # Vehicle dynamics for oversteer/understeer detection
+                'yawRate': 'YawRate',           # Yaw rate (rotation speed)
+                'yaw': 'Yaw',                   # Yaw angle
+                'roll': 'Roll',                 # Roll angle
+                'rollRate': 'RollRate',         # Roll rate
+                'pitch': 'Pitch',               # Pitch angle
+                'pitchRate': 'PitchRate',       # Pitch rate
+                'velocityX': 'VelocityX',       # Longitudinal velocity
+                'velocityY': 'VelocityY',       # Lateral velocity
+                'velocityZ': 'VelocityZ',       # Vertical velocity
+                'latAccel': 'LatAccel',         # Lateral acceleration (G-force)
+                'longAccel': 'LongAccel',       # Longitudinal acceleration
+                'vertAccel': 'VertAccel',       # Vertical acceleration
+                'steeringTorque': 'SteeringWheelTorque',  # Force feedback
+                
                 # Environmental
                 'trackTempCrew': 'TrackTempCrew',
                 'airTemp': 'AirTemp',

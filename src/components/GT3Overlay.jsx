@@ -8,8 +8,13 @@ import {
   RotateCcw,
   Wifi,
   WifiOff,
+  Cloud,
+  CloudOff,
+  User,
 } from "lucide-react";
 import UpdateNotification from "./UpdateNotification";
+import { useAuth } from "../firebase/auth";
+import { useSessionHistory } from "../firebase/sessionHistory";
 
 const useIRacingTelemetry = () => {
   const [telemetryData, setTelemetryData] = useState(null);
@@ -430,7 +435,89 @@ const GT3OverlaySystem = () => {
     isCoachingConnected,
     sessionInfo,
   } = useCoachingMessages();
+
+  // Firebase hooks
+  const { user, isAuthenticated, signInAnonymous, logout, isAnonymous } =
+    useAuth();
+  const {
+    sessions,
+    currentSessionId,
+    hasActiveSession,
+    startSession,
+    endSession,
+    addCoachingMessage,
+    addLapTime,
+  } = useSessionHistory();
+
   const [showSettings, setShowSettings] = useState(false);
+  const [lastLapNumber, setLastLapNumber] = useState(0);
+
+  // Auto sign-in anonymously when component mounts
+  useEffect(() => {
+    if (!isAuthenticated) {
+      signInAnonymous().catch(console.error);
+    }
+  }, [isAuthenticated, signInAnonymous]);
+
+  // Session management - start session when we have session info and user is authenticated
+  useEffect(() => {
+    if (isAuthenticated && sessionInfo && !hasActiveSession && isConnected) {
+      console.log("Starting new session:", sessionInfo);
+      startSession(sessionInfo, telemetryData).catch(console.error);
+    }
+  }, [
+    isAuthenticated,
+    sessionInfo,
+    hasActiveSession,
+    isConnected,
+    startSession,
+    telemetryData,
+  ]);
+
+  // End session when disconnected from iRacing
+  useEffect(() => {
+    if (!isConnected && hasActiveSession) {
+      console.log("iRacing disconnected, ending session");
+      endSession({
+        total_laps: telemetryData?.lap || 0,
+        final_fuel_level: telemetryData?.fuelLevel || 0,
+      }).catch(console.error);
+    }
+  }, [isConnected, hasActiveSession, endSession, telemetryData]);
+
+  // Track lap completions and save to Firebase
+  useEffect(() => {
+    if (
+      telemetryData?.lap &&
+      telemetryData.lap > lastLapNumber &&
+      hasActiveSession
+    ) {
+      const lapTime = telemetryData.lapLastLapTime;
+      if (lapTime && lapTime > 0) {
+        console.log(
+          `Lap ${telemetryData.lap} completed: ${lapTime.toFixed(3)}s`
+        );
+        addLapTime(lapTime, telemetryData.lap).catch(console.error);
+      }
+      setLastLapNumber(telemetryData.lap);
+    }
+  }, [
+    telemetryData?.lap,
+    telemetryData?.lapLastLapTime,
+    lastLapNumber,
+    hasActiveSession,
+    addLapTime,
+  ]);
+
+  // Save coaching messages to Firebase
+  useEffect(() => {
+    if (coachingMessages.length > 0 && hasActiveSession) {
+      const latestMessage = coachingMessages[0];
+      if (latestMessage.isNew) {
+        addCoachingMessage(latestMessage).catch(console.error);
+      }
+    }
+  }, [coachingMessages, hasActiveSession, addCoachingMessage]);
 
   const [widgetPositions, setWidgetPositions] = useState({
     deltaTime: { x: 50, y: 50 },
@@ -842,6 +929,22 @@ const GT3OverlaySystem = () => {
             {isConnected ? "iRacing Connected" : "iRacing Disconnected"}
           </span>
         </div>
+
+        <div
+          className={`flex items-center space-x-2 px-3 py-1 rounded-full ${
+            isAuthenticated ? "bg-blue-600" : "bg-gray-600"
+          }`}
+        >
+          {isAuthenticated ? <Cloud size={16} /> : <CloudOff size={16} />}
+          <span className="text-sm text-white">
+            {isAuthenticated
+              ? hasActiveSession
+                ? "Session Recording"
+                : "Cloud Ready"
+              : "Cloud Offline"}
+          </span>
+        </div>
+
         <button
           onClick={() => setShowSettings(!showSettings)}
           className="bg-gray-800 bg-opacity-80 backdrop-blur-sm border border-gray-600 rounded-lg p-2 text-white hover:bg-gray-700 transition-colors"
@@ -875,11 +978,48 @@ const GT3OverlaySystem = () => {
           <div className="mt-4 pt-4 border-t border-gray-600">
             <button
               onClick={resetPositions}
-              className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded transition-colors"
+              className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded transition-colors mb-3"
             >
               <RotateCcw size={16} />
               <span>Reset Positions</span>
             </button>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-white">Cloud Sync</div>
+              {isAuthenticated ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400">Status:</span>
+                    <span className="text-green-400">
+                      {isAnonymous ? "Anonymous User" : "Logged In"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400">Sessions:</span>
+                    <span className="text-white">{sessions.length}</span>
+                  </div>
+                  {hasActiveSession && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-400">Recording:</span>
+                      <span className="text-green-400">Active</span>
+                    </div>
+                  )}
+                  <button
+                    onClick={logout}
+                    className="w-full bg-red-600 hover:bg-red-700 text-white py-1 px-3 rounded text-xs transition-colors"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={signInAnonymous}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-1 px-3 rounded text-xs transition-colors"
+                >
+                  Enable Cloud Sync
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

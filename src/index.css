@@ -37,8 +37,18 @@ body {
 .widget-content,
 button,
 [role="button"],
-.draggable-widget {
+.draggable-widget,
+.widget-header {
   pointer-events: auto !important;
+}
+
+/* Ensure cursor styles work properly */
+.cursor-grab {
+  cursor: grab !important;
+}
+
+.cursor-grabbing {
+  cursor: grabbing !important;
 }
 
 /* Scrollbar styling for widgets */

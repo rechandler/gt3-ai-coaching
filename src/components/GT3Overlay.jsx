@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Settings,
   X,
@@ -15,9 +15,20 @@ const useIRacingTelemetry = () => {
   const [telemetryData, setTelemetryData] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const telemetryWs = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
 
   useEffect(() => {
     const connectWebSocket = () => {
+      // Clear any existing connection
+      if (telemetryWs.current) {
+        try {
+          telemetryWs.current.close();
+        } catch (error) {
+          console.warn("Error closing existing telemetry WebSocket:", error);
+        }
+        telemetryWs.current = null;
+      }
+
       try {
         telemetryWs.current = new WebSocket("ws://localhost:8081");
 
@@ -50,10 +61,17 @@ const useIRacingTelemetry = () => {
           }
         };
 
-        telemetryWs.current.onclose = () => {
-          console.log("Disconnected from telemetry server");
+        telemetryWs.current.onclose = (event) => {
+          console.log("Disconnected from telemetry server", event.code, event.reason);
           setIsConnected(false);
-          setTimeout(connectWebSocket, 2000);
+          
+          // Clear the WebSocket reference
+          telemetryWs.current = null;
+          
+          // Only reconnect if it wasn't a manual close (code 1000)
+          if (event.code !== 1000) {
+            reconnectTimeoutRef.current = setTimeout(connectWebSocket, 2000);
+          }
         };
 
         telemetryWs.current.onerror = (error) => {
@@ -63,15 +81,27 @@ const useIRacingTelemetry = () => {
       } catch (error) {
         console.error("Failed to connect to WebSocket:", error);
         setIsConnected(false);
-        setTimeout(connectWebSocket, 5000);
+        reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000);
       }
     };
 
     connectWebSocket();
 
     return () => {
+      // Clear reconnection timeout
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      
+      // Close WebSocket connection
       if (telemetryWs.current) {
-        telemetryWs.current.close();
+        try {
+          telemetryWs.current.close(1000, "Component unmounting");
+        } catch (error) {
+          console.warn("Error closing telemetry WebSocket on cleanup:", error);
+        }
+        telemetryWs.current = null;
       }
     };
   }, []);
@@ -83,9 +113,20 @@ const useCoachingMessages = () => {
   const [coachingMessages, setCoachingMessages] = useState([]);
   const [isCoachingConnected, setIsCoachingConnected] = useState(false);
   const coachingWs = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
 
   useEffect(() => {
     const connectCoachingWebSocket = () => {
+      // Clear any existing connection
+      if (coachingWs.current) {
+        try {
+          coachingWs.current.close();
+        } catch (error) {
+          console.warn("Error closing existing coaching WebSocket:", error);
+        }
+        coachingWs.current = null;
+      }
+
       try {
         coachingWs.current = new WebSocket("ws://localhost:8082");
 
@@ -94,12 +135,18 @@ const useCoachingMessages = () => {
           setIsCoachingConnected(true);
 
           // Request recent message history
-          coachingWs.current.send(
-            JSON.stringify({
-              type: "get_history",
-              count: 5,
-            })
-          );
+          try {
+            if (coachingWs.current && coachingWs.current.readyState === WebSocket.OPEN) {
+              coachingWs.current.send(
+                JSON.stringify({
+                  type: "get_history",
+                  count: 5,
+                })
+              );
+            }
+          } catch (error) {
+            console.error("Error sending history request:", error);
+          }
         };
 
         coachingWs.current.onmessage = (event) => {
@@ -160,10 +207,17 @@ const useCoachingMessages = () => {
           }
         };
 
-        coachingWs.current.onclose = () => {
-          console.log("Disconnected from coaching server");
+        coachingWs.current.onclose = (event) => {
+          console.log("Disconnected from coaching server", event.code, event.reason);
           setIsCoachingConnected(false);
-          setTimeout(connectCoachingWebSocket, 2000);
+          
+          // Clear the WebSocket reference
+          coachingWs.current = null;
+          
+          // Only reconnect if it wasn't a manual close (code 1000)
+          if (event.code !== 1000) {
+            reconnectTimeoutRef.current = setTimeout(connectCoachingWebSocket, 2000);
+          }
         };
 
         coachingWs.current.onerror = (error) => {
@@ -173,15 +227,27 @@ const useCoachingMessages = () => {
       } catch (error) {
         console.error("Failed to connect to coaching WebSocket:", error);
         setIsCoachingConnected(false);
-        setTimeout(connectCoachingWebSocket, 5000);
+        reconnectTimeoutRef.current = setTimeout(connectCoachingWebSocket, 5000);
       }
     };
 
     connectCoachingWebSocket();
 
     return () => {
+      // Clear reconnection timeout
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      
+      // Close WebSocket connection
       if (coachingWs.current) {
-        coachingWs.current.close();
+        try {
+          coachingWs.current.close(1000, "Component unmounting");
+        } catch (error) {
+          console.warn("Error closing coaching WebSocket on cleanup:", error);
+        }
+        coachingWs.current = null;
       }
     };
   }, []);
@@ -199,71 +265,102 @@ const DraggableWidget = ({
   onToggleVisibility,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const widgetRef = useRef(null);
 
-  const handleMouseDown = (e) => {
-    if (e.target.closest(".widget-content")) return;
-
+  const startDrag = useCallback((e) => {
+    console.log("Mouse down on header for widget:", id, "Target:", e.target.tagName);
+    
     setIsDragging(true);
-    const rect = widgetRef.current.getBoundingClientRect();
-    setDragOffset({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+    setDragStart({
+      x: e.clientX - position.x,
+      y: e.clientY - position.y,
     });
+    
+    document.body.style.userSelect = 'none';
     e.preventDefault();
-  };
+  }, [position.x, position.y, id]);
 
-  const handleMouseMove = (e) => {
+  const onDrag = useCallback((e) => {
     if (!isDragging) return;
+    
+    console.log("Dragging widget:", id);
+    
+    const newX = e.clientX - dragStart.x;
+    const newY = e.clientY - dragStart.y;
+    
+    onPositionChange(id, { x: newX, y: newY });
+  }, [isDragging, dragStart.x, dragStart.y, onPositionChange, id]);
 
-    const newPosition = {
-      x: e.clientX - dragOffset.x,
-      y: e.clientY - dragOffset.y,
-    };
-
-    onPositionChange(id, newPosition);
-  };
-
-  const handleMouseUp = () => {
+  const stopDrag = useCallback(() => {
+    console.log("Stopping drag for widget:", id);
     setIsDragging(false);
-  };
+    document.body.style.userSelect = '';
+  }, [id]);
 
   useEffect(() => {
     if (isDragging) {
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
+      document.addEventListener('mousemove', onDrag);
+      document.addEventListener('mouseup', stopDrag);
+      
       return () => {
-        document.removeEventListener("mousemove", handleMouseMove);
-        document.removeEventListener("mouseup", handleMouseUp);
+        document.removeEventListener('mousemove', onDrag);
+        document.removeEventListener('mouseup', stopDrag);
       };
     }
-  }, [isDragging, dragOffset]);
+  }, [isDragging, onDrag, stopDrag]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      document.body.style.userSelect = '';
+    };
+  }, []);
 
   if (!isVisible) return null;
 
   return (
     <div
       ref={widgetRef}
-      className={`fixed bg-black bg-opacity-80 backdrop-blur-sm border border-gray-600 rounded-lg shadow-lg transition-all duration-200 ${
-        isDragging ? "cursor-grabbing shadow-xl scale-105" : "cursor-grab"
+      className={`fixed bg-black bg-opacity-80 backdrop-blur-sm border border-gray-600 rounded-lg shadow-lg ${
+        isDragging ? "shadow-xl scale-105" : ""
       }`}
       style={{
         left: position.x,
         top: position.y,
-        zIndex: 1000,
+        zIndex: isDragging ? 1001 : 1000,
         minWidth: "200px",
+        transition: isDragging ? 'none' : 'all 0.2s',
+        pointerEvents: 'auto'
       }}
-      onMouseDown={handleMouseDown}
     >
-      <div className="flex items-center justify-between p-2 bg-gray-800 rounded-t-lg">
+      <div
+        className={`widget-header flex items-center justify-between p-2 bg-gray-800 rounded-t-lg transition-colors hover:bg-gray-700 ${
+          isDragging ? "cursor-grabbing bg-gray-700" : "cursor-grab"
+        }`}
+        onMouseDown={startDrag}
+        onMouseEnter={() => console.log("Hovering over header for widget:", id)}
+        style={{ 
+          userSelect: "none",
+          WebkitUserSelect: "none",
+          MozUserSelect: "none",
+          msUserSelect: "none",
+          cursor: isDragging ? "grabbing" : "grab",
+          pointerEvents: 'auto'
+        }}
+      >
         <div className="flex items-center space-x-2">
-          <Move size={16} className="text-gray-400" />
+          <Move size={16} className={`transition-colors ${isDragging ? "text-blue-400" : "text-gray-400 hover:text-gray-200"}`} />
           <span className="text-sm font-medium text-white">{title}</span>
         </div>
         <button
-          onClick={() => onToggleVisibility(id)}
-          className="text-gray-400 hover:text-white transition-colors"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleVisibility(id);
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="text-gray-400 hover:text-white transition-colors hover:bg-gray-600 rounded p-1"
+          style={{ cursor: "pointer" }}
         >
           <X size={16} />
         </button>

@@ -182,10 +182,10 @@ const useCoachingMessages = () => {
                   return prev;
                 }
 
-                // Add new message and keep sorted by priority
+                // Add new message at the beginning (top) and keep sorted by timestamp (newest first)
                 const updated = [newMessage, ...prev]
-                  .sort((a, b) => b.priority - a.priority)
-                  .slice(0, 4); // Keep max 4 messages
+                  .sort((a, b) => b.timestamp - a.timestamp)
+                  .slice(0, 6); // Keep max 6 messages for the improved UI
 
                 return updated;
               });
@@ -207,7 +207,11 @@ const useCoachingMessages = () => {
                 improvementPotential: msg.data.improvement_potential,
               }));
 
-              setCoachingMessages(historyMessages.slice(0, 4));
+              setCoachingMessages(
+                historyMessages
+                  .sort((a, b) => b.timestamp - a.timestamp)
+                  .slice(0, 6)
+              );
             }
           } catch (error) {
             console.error("Error parsing coaching message:", error);
@@ -583,10 +587,10 @@ const GT3OverlaySystem = () => {
   // Note: BrakeTempsWidget removed - iRacing doesn't provide reliable brake temperature data
 
   const CoachingWidget = () => {
-    const MESSAGE_DISPLAY_TIME = 12000; // 12 seconds per message
-    const MAX_MESSAGES = 4; // Maximum messages to show at once
+    const MESSAGE_DISPLAY_TIME = 5000; // 5 seconds per message as requested
+    const MAX_MESSAGES = 6; // Maximum messages to show at once
 
-    // Clean up expired messages
+    // Clean up expired messages - remove them completely from the UI
     useEffect(() => {
       const interval = setInterval(() => {
         setCoachingMessages((prev) => {
@@ -597,19 +601,19 @@ const GT3OverlaySystem = () => {
 
             if (isExpired) {
               console.log(
-                `Message expired: "${msg.message}" (${(
+                `Message auto-expired and removed: "${msg.message}" (${(
                   messageAge / 1000
                 ).toFixed(1)}s old)`
               );
             }
 
-            return !isExpired;
+            return !isExpired; // Only keep non-expired messages
           });
 
           // Log when messages are removed
           if (filtered.length !== prev.length) {
             console.log(
-              `Cleaned up ${
+              `Auto-removed ${
                 prev.length - filtered.length
               } expired messages. Remaining: ${filtered.length}`
             );
@@ -617,10 +621,10 @@ const GT3OverlaySystem = () => {
 
           return filtered;
         });
-      }, 1000);
+      }, 100); // Check every 100ms for smooth removal
 
       return () => clearInterval(interval);
-    }, [MESSAGE_DISPLAY_TIME, setCoachingMessages]);
+    }, [setCoachingMessages]);
 
     // Mark messages as no longer new after a brief period
     useEffect(() => {
@@ -628,13 +632,13 @@ const GT3OverlaySystem = () => {
         setCoachingMessages((prev) =>
           prev.map((msg) => ({ ...msg, isNew: false }))
         );
-      }, 1000);
+      }, 800);
 
       return () => clearTimeout(timer);
     }, [coachingMessages.length, setCoachingMessages]);
 
     return (
-      <div className="bg-opacity-50 rounded p-2 min-h-16 w-80 border-l-4 border-blue-500">
+      <div className="bg-opacity-50 rounded p-2 min-h-16 w-96 border-l-4 border-blue-500">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
             <span className="text-sm font-medium text-blue-300">AI Coach</span>
@@ -645,10 +649,7 @@ const GT3OverlaySystem = () => {
               <span className="text-xs text-red-400">●</span>
             )}
           </div>
-          <div className="text-xs text-gray-400">
-            {coachingMessages.length} message
-            {coachingMessages.length !== 1 ? "s" : ""}
-          </div>
+          <div className="text-xs text-gray-400">Auto-expire in 5s</div>
         </div>
 
         {!isConnected || !isCoachingConnected ? (
@@ -660,56 +661,84 @@ const GT3OverlaySystem = () => {
         ) : coachingMessages.length === 0 ? (
           <div className="text-sm text-gray-400">Analyzing your driving...</div>
         ) : (
-          <div className="space-y-2">
-            {coachingMessages.map((msg, index) => {
-              const age = (Date.now() - msg.timestamp) / 1000;
-              const opacity = Math.max(
-                0.4,
-                1 - (age / (MESSAGE_DISPLAY_TIME / 1000)) * 0.6
-              );
+          <div className="space-y-2 max-h-80 overflow-hidden">
+            {/* Messages sorted to show newest at top and scroll down */}
+            {coachingMessages
+              .sort((a, b) => b.timestamp - a.timestamp) // Newest first
+              .slice(0, MAX_MESSAGES)
+              .map((msg, index) => {
+                const age = (Date.now() - msg.timestamp) / 1000;
+                const remainingTime = Math.max(
+                  0,
+                  MESSAGE_DISPLAY_TIME / 1000 - age
+                );
 
-              return (
-                <div
-                  key={msg.id}
-                  className={`transition-all duration-500 ${
-                    msg.isNew ? "animate-pulse" : ""
-                  } ${getCoachingColor(msg.category, msg.priority)} 
-                  rounded px-2 py-1 border-l-2`}
-                  style={{ opacity }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-1">
-                      <span className="text-xs">
-                        {getCategoryIcon(msg.category)}
-                      </span>
-                      <span className="text-xs font-medium text-white">
-                        P{msg.priority}
-                      </span>
-                      {msg.isNew && (
-                        <span className="text-xs bg-blue-500 text-white px-1 rounded">
-                          NEW
+                // Since messages are auto-removed when expired, we don't need opacity fading
+                const opacity = 1; // Always full opacity since expired messages are removed
+
+                return (
+                  <div
+                    key={msg.id}
+                    className={`coaching-message-container transition-all duration-300 transform ${
+                      msg.isNew ? "animate-slideInDown" : ""
+                    } ${getCoachingColor(msg.category, msg.priority)} 
+                    rounded-lg px-3 py-2 border-l-4 shadow-lg hover:shadow-xl`}
+                    style={{
+                      opacity,
+                      transform: msg.isNew
+                        ? "translateY(-10px)"
+                        : "translateY(0)",
+                      animationDuration: "0.4s",
+                    }}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm">
+                          {getCategoryIcon(msg.category)}
                         </span>
-                      )}
+                        <span className="text-xs font-bold text-white bg-black bg-opacity-30 px-1.5 py-0.5 rounded">
+                          P{msg.priority}
+                        </span>
+                        {msg.isNew && (
+                          <span className="text-xs bg-blue-500 text-white px-1.5 py-0.5 rounded font-medium animate-pulse">
+                            NEW
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end text-xs text-gray-300">
+                        <span>{msg.confidence}%</span>
+                        <span className="text-xs text-gray-400 font-medium">
+                          {Math.ceil(remainingTime)}s
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-xs text-gray-300">
-                      {msg.confidence}%
-                    </span>
-                  </div>
-                  <div className="text-sm text-white mt-1 leading-tight">
-                    {msg.message}
-                  </div>
-                  <div className="text-xs text-gray-400 mt-1">
-                    {Math.round(age)}s ago
-                  </div>
-                  {msg.improvementPotential && (
-                    <div className="text-xs text-green-400 mt-1">
-                      Potential improvement:{" "}
-                      {msg.improvementPotential.toFixed(2)}s
+                    <div className="text-sm text-white mt-2 leading-relaxed font-medium">
+                      {msg.message}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                    {msg.improvementPotential && (
+                      <div className="text-xs text-green-400 mt-1 font-medium">
+                        Potential improvement:{" "}
+                        {msg.improvementPotential.toFixed(2)}s
+                      </div>
+                    )}
+                    {/* Progress bar showing time remaining */}
+                    <div className="mt-2">
+                      <div className="w-full bg-black bg-opacity-30 rounded-full h-1">
+                        <div
+                          className="bg-blue-400 h-1 rounded-full transition-all duration-100"
+                          style={{
+                            width: `${Math.max(
+                              0,
+                              (remainingTime / (MESSAGE_DISPLAY_TIME / 1000)) *
+                                100
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         )}
       </div>

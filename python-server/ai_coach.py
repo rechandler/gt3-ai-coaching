@@ -14,6 +14,9 @@ from dataclasses import dataclass, field
 import json
 import sys
 import io
+import threading
+import queue
+import random
 
 # Fix Windows Unicode encoding issues
 if sys.platform == 'win32':
@@ -121,6 +124,150 @@ class GForceAnalysis:
     grip_circle_utilization: float  # How much of grip circle is used
     excessive_g_events: int     # Count of excessive G-force spikes
     optimal_g_range: bool       # Whether G-forces are in optimal range
+
+@dataclass
+class LLMCoachingContext:
+    """Context data for LLM coaching analysis"""
+    session_summary: Dict[str, Any]
+    recent_telemetry: List[Dict[str, Any]]
+    recent_messages: List[str]
+    driver_style: str
+    coaching_intensity: float
+    current_issues: List[str]
+    improvements_made: List[str]
+
+@dataclass
+class LLMResponse:
+    """Response from LLM coaching system"""
+    enhanced_message: str
+    explanation: str
+    session_advice: Optional[str] = None
+    confidence: float = 0.0
+    
+class LocalLLMClient:
+    """Simple client for local LLM integration (Ollama, LM Studio, etc.)"""
+    
+    def __init__(self, enabled: bool = False, model: str = "llama3.1:8b"):
+        self.enabled = enabled
+        self.model = model
+        self.base_url = "http://localhost:11434"  # Ollama default
+        
+    def enhance_coaching_message(self, message: str, context: LLMCoachingContext) -> LLMResponse:
+        """Enhance a coaching message with natural language explanation"""
+        if not self.enabled:
+            return LLMResponse(
+                enhanced_message=message,
+                explanation="",
+                confidence=0.0
+            )
+        
+        try:
+            prompt = self._build_enhancement_prompt(message, context)
+            response = self._call_llm(prompt)
+            return self._parse_enhancement_response(response, message)
+        except Exception as e:
+            logger.warning(f"LLM enhancement failed: {e}")
+            return LLMResponse(
+                enhanced_message=message,
+                explanation="",
+                confidence=0.0
+            )
+    
+    def generate_session_analysis(self, context: LLMCoachingContext) -> str:
+        """Generate comprehensive session analysis"""
+        if not self.enabled:
+            return "Session analysis requires LLM integration"
+            
+        try:
+            prompt = self._build_session_prompt(context)
+            return self._call_llm(prompt)
+        except Exception as e:
+            logger.warning(f"Session analysis failed: {e}")
+            return "Session analysis temporarily unavailable"
+    
+    def _build_enhancement_prompt(self, message: str, context: LLMCoachingContext) -> str:
+        """Build prompt for message enhancement"""
+        style_map = {
+            "consistent": "supportive and encouraging",
+            "developing": "detailed and instructional", 
+            "improving": "motivational and technical"
+        }
+        
+        communication_style = style_map.get(context.driver_style, "balanced")
+        
+        return f"""
+You are an expert GT3 racing coach. Enhance this coaching message with a natural explanation.
+
+Original message: "{message}"
+
+Driver context:
+- Style: {context.driver_style}
+- Communication preference: {communication_style}
+- Recent performance: {len(context.recent_telemetry)} telemetry samples
+- Current issues: {', '.join(context.current_issues) if context.current_issues else 'None'}
+
+Provide:
+1. Enhanced message (conversational, {communication_style})
+2. Brief explanation of WHY this advice helps
+3. Keep it under 150 words total
+
+Format: Enhanced message | Explanation
+"""
+
+    def _build_session_prompt(self, context: LLMCoachingContext) -> str:
+        """Build prompt for session analysis"""
+        return f"""
+Analyze this GT3 racing session and provide coaching insights:
+
+Session Data:
+- Laps completed: {context.session_summary.get('laps_completed', 0)}
+- Best lap: {context.session_summary.get('best_lap_time', 'N/A')}
+- Consistency: {context.session_summary.get('consistency', 'N/A')}
+- Driving style: {context.driver_style}
+- Recent improvements: {', '.join(context.improvements_made) if context.improvements_made else 'None'}
+- Current challenges: {', '.join(context.current_issues) if context.current_issues else 'None'}
+
+Provide:
+1. Top 3 areas for improvement with specific advice
+2. What the driver is doing well
+3. Recommended practice focus for next session
+4. One mental/strategic tip
+
+Keep response under 300 words, be specific and actionable.
+"""
+
+    def _call_llm(self, prompt: str) -> str:
+        """Make API call to local LLM (placeholder - implement based on your LLM choice)"""
+        # This is a placeholder - implement based on your LLM setup:
+        # - Ollama: requests to http://localhost:11434/api/generate
+        # - LM Studio: requests to http://localhost:1234/v1/chat/completions
+        # - llama.cpp: direct Python bindings
+        
+        # For now, return a template response
+        return "Enhanced coaching message | This helps improve your racing line and lap consistency."
+    
+    def _parse_enhancement_response(self, response: str, original: str) -> LLMResponse:
+        """Parse LLM response into structured format"""
+        try:
+            if "|" in response:
+                enhanced, explanation = response.split("|", 1)
+                return LLMResponse(
+                    enhanced_message=enhanced.strip(),
+                    explanation=explanation.strip(),
+                    confidence=0.8
+                )
+            else:
+                return LLMResponse(
+                    enhanced_message=response[:100] + "..." if len(response) > 100 else response,
+                    explanation="",
+                    confidence=0.5
+                )
+        except Exception:
+            return LLMResponse(
+                enhanced_message=original,
+                explanation="",
+                confidence=0.0
+            )
     
 class LocalAICoach:
     """Local AI coaching system that learns from your driving"""
@@ -216,7 +363,45 @@ class LocalAICoach:
         self.last_positive_feedback = 0                   # Timing for positive messages
         self.recent_improvements = deque(maxlen=20)       # Track recent improvements
         
+        # LLM Integration for Natural Language Coaching
+        self.llm_client = LocalLLMClient(enabled=False)   # Disabled by default
+        self.llm_insights_queue = queue.Queue()           # Background LLM analysis
+        self.last_llm_analysis = 0                        # Timing for LLM analysis
+        self.current_issues = deque(maxlen=10)            # Track current driving issues
+        self.communication_style = "balanced"             # Driver's preferred style
+        
         logger.info("🤖 Local AI Coach initialized with advanced dynamics analysis - ready to learn your driving style")
+    
+    def enable_llm_coaching(self, model: str = "llama3.1:8b", base_url: str = "http://localhost:11434"):
+        """Enable LLM-powered natural language coaching"""
+        self.llm_client.enabled = True
+        self.llm_client.model = model
+        self.llm_client.base_url = base_url
+        logger.info(f"🧠 LLM coaching enabled with model: {model}")
+    
+    def set_communication_style(self, style: str):
+        """Set driver's preferred communication style"""
+        valid_styles = ["supportive", "technical", "motivational", "balanced"]
+        if style in valid_styles:
+            self.communication_style = style
+            logger.info(f"💬 Communication style set to: {style}")
+        else:
+            logger.warning(f"Invalid style '{style}'. Valid options: {valid_styles}")
+    
+    def _build_llm_context(self) -> LLMCoachingContext:
+        """Build context for LLM analysis"""
+        recent_telemetry = list(self.telemetry_buffer)[-60:] if self.telemetry_buffer else []
+        recent_message_texts = [msg for msg in list(self.recent_messages.keys())[-5:]]
+        
+        return LLMCoachingContext(
+            session_summary=self.get_session_summary(),
+            recent_telemetry=recent_telemetry,
+            recent_messages=recent_message_texts,
+            driver_style=self.driving_style,
+            coaching_intensity=self.coaching_intensity,
+            current_issues=list(self.current_issues),
+            improvements_made=list(self.recent_improvements)
+        )
     
     def _initialize_corner_names(self) -> Dict[float, str]:
         """Initialize track-specific corner names based on lap distance percentage"""
@@ -320,7 +505,18 @@ class LocalAICoach:
                 messages.extend(self._analyze_sector_performance(telemetry))
             
             # Filter and prioritize messages
-            return self._prioritize_messages(messages)
+            prioritized_messages = self._prioritize_messages(messages)
+            
+            # Track issues and improvements for LLM context
+            self._track_driving_issues(prioritized_messages)
+            self._track_improvements(prioritized_messages)
+            
+            # Enhance high-priority messages with LLM if enabled
+            if self.llm_client.enabled and prioritized_messages:
+                enhanced_messages = self._enhance_messages_with_llm(prioritized_messages)
+                return enhanced_messages
+            
+            return prioritized_messages
             
         except Exception as e:
             logger.error(f"Error in AI coaching: {e}")
@@ -2114,3 +2310,96 @@ class LocalAICoach:
                     self.last_positive_feedback = current_time
         
         return messages
+    
+    def _enhance_messages_with_llm(self, messages: List[CoachingMessage]) -> List[CoachingMessage]:
+        """Enhance coaching messages with LLM natural language processing"""
+        if not messages or not self.llm_client.enabled:
+            return messages
+        
+        enhanced_messages = []
+        context = self._build_llm_context()
+        
+        for message in messages:
+            # Only enhance high-priority messages to avoid latency
+            if message.priority >= 6:
+                try:
+                    llm_response = self.llm_client.enhance_coaching_message(message.message, context)
+                    if llm_response.confidence > 0.3:  # Use enhanced version if confident
+                        # Create enhanced message with explanation
+                        enhanced_text = llm_response.enhanced_message
+                        if llm_response.explanation:
+                            enhanced_text += f" ({llm_response.explanation})"
+                        
+                        enhanced_message = CoachingMessage(
+                            message=enhanced_text,
+                            category=message.category + "_enhanced",
+                            priority=message.priority,
+                            confidence=message.confidence * llm_response.confidence,
+                            data_source=message.data_source + "_llm",
+                            improvement_potential=message.improvement_potential
+                        )
+                        enhanced_messages.append(enhanced_message)
+                    else:
+                        enhanced_messages.append(message)  # Use original if LLM not confident
+                except Exception as e:
+                    logger.warning(f"LLM enhancement failed for message: {e}")
+                    enhanced_messages.append(message)  # Fallback to original
+            else:
+                enhanced_messages.append(message)  # Low priority - use original
+        
+        return enhanced_messages
+    
+    def generate_session_report(self) -> str:
+        """Generate comprehensive session analysis with LLM insights"""
+        context = self._build_llm_context()
+        
+        if self.llm_client.enabled:
+            return self.llm_client.generate_session_analysis(context)
+        else:
+            # Fallback to basic session summary
+            summary = self.get_session_summary()
+            basic_report = f"""
+Session Summary:
+- Laps completed: {summary.get('laps_completed', 0)}
+- Best lap time: {summary.get('best_lap_time', 'N/A')}
+- Driving style: {summary.get('driving_style', 'unknown')}
+- Consistency: {summary.get('consistency', 'N/A')}
+
+Enable LLM integration for detailed analysis and personalized coaching advice.
+"""
+            return basic_report.strip()
+    
+    def _track_driving_issues(self, messages: List[CoachingMessage]):
+        """Track current driving issues for LLM context"""
+        for message in messages:
+            if message.priority >= 7:  # High priority issues
+                issue = f"{message.category}:{message.data_source}"
+                if issue not in self.current_issues:
+                    self.current_issues.append(issue)
+    
+    def _track_improvements(self, messages: List[CoachingMessage]):
+        """Track improvements for positive reinforcement"""
+        for message in messages:
+            if message.category == "positive" or "excellent" in message.message.lower():
+                improvement = f"{message.category}:{message.data_source}"
+                if improvement not in self.recent_improvements:
+                    self.recent_improvements.append(improvement)
+
+# Example usage with LLM integration:
+"""
+# Basic usage (fast system only)
+coach = LocalAICoach()
+messages = coach.process_telemetry(telemetry_data)
+
+# Enhanced usage with LLM
+coach = LocalAICoach()
+coach.enable_llm_coaching(model="llama3.1:8b")  # or "phi-3-mini" for faster responses
+coach.set_communication_style("supportive")      # "technical", "motivational", "balanced"
+
+# Process telemetry (now with enhanced messages)
+enhanced_messages = coach.process_telemetry(telemetry_data)
+
+# Generate session report
+session_analysis = coach.generate_session_report()
+print(session_analysis)
+"""

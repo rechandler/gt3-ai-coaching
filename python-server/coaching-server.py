@@ -227,13 +227,22 @@ class CoachingServer:
                                     if (primary_message.message != last_coaching_message and 
                                         current_time - last_message_time >= min_message_interval):
                                         
-                                        # Prepare coaching data
+                                        # Prepare coaching data with session info
                                         coaching_data = {
                                             "message": primary_message.message,
                                             "category": primary_message.category,
                                             "priority": primary_message.priority,
-                                            "confidence": int(primary_message.confidence)
+                                            "confidence": int(primary_message.confidence),
+                                            # Include reliable session data
+                                            "session_info": {
+                                                "track_name": self.ai_coach.track_name,
+                                                "car_name": self.ai_coach.car_name,
+                                                "session_active": True,
+                                                "baseline_established": self.ai_coach.baseline_established
+                                            }
                                         }
+                                        
+                                        logger.debug(f"📊 Sending session info: {self.ai_coach.track_name} + {self.ai_coach.car_name}")
                                         
                                         # Add secondary messages if any
                                         if len(coaching_messages) > 1:
@@ -292,13 +301,21 @@ class CoachingServer:
                     self.current_session_active = True
                     logger.info(f"🏁 Auto-started session: {track_name} + {car_name}")
                     
-                    # Send session start notification
+                    # Send session start notification with reliable session info
                     session_data = {
                         "message": f"📊 Session started: {track_name}",
                         "category": "session",
                         "priority": 5,
-                        "confidence": 100
+                        "confidence": 100,
+                        "session_info": {
+                            "track_name": self.ai_coach.track_name,
+                            "car_name": self.ai_coach.car_name,
+                            "session_active": True,
+                            "baseline_established": self.ai_coach.baseline_established
+                        }
                     }
+                    
+                    logger.info(f"📊 Sending session start with info: {self.ai_coach.track_name} + {self.ai_coach.car_name}")
                     await self.broadcast_message(session_data)
         
         except Exception as e:

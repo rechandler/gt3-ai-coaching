@@ -116,6 +116,7 @@ const useIRacingTelemetry = () => {
 const useCoachingMessages = () => {
   const [coachingMessages, setCoachingMessages] = useState([]);
   const [isCoachingConnected, setIsCoachingConnected] = useState(false);
+  const [sessionInfo, setSessionInfo] = useState(null); // Add session info state
   const coachingWs = useRef(null);
   const reconnectTimeoutRef = useRef(null);
 
@@ -174,6 +175,15 @@ const useCoachingMessages = () => {
                 secondaryMessages: message.data.secondary_messages || [],
                 improvementPotential: message.data.improvement_potential,
               };
+
+              // Update session info if provided
+              if (message.data.session_info) {
+                console.log(
+                  "Received session info:",
+                  message.data.session_info
+                );
+                setSessionInfo(message.data.session_info);
+              }
 
               setCoachingMessages((prev) => {
                 // Check if this message already exists
@@ -273,7 +283,12 @@ const useCoachingMessages = () => {
     };
   }, []);
 
-  return { coachingMessages, setCoachingMessages, isCoachingConnected };
+  return {
+    coachingMessages,
+    setCoachingMessages,
+    isCoachingConnected,
+    sessionInfo,
+  };
 };
 
 const DraggableWidget = ({
@@ -409,8 +424,12 @@ const DraggableWidget = ({
 
 const GT3OverlaySystem = () => {
   const { telemetryData, isConnected } = useIRacingTelemetry();
-  const { coachingMessages, setCoachingMessages, isCoachingConnected } =
-    useCoachingMessages();
+  const {
+    coachingMessages,
+    setCoachingMessages,
+    isCoachingConnected,
+    sessionInfo,
+  } = useCoachingMessages();
   const [showSettings, setShowSettings] = useState(false);
 
   const [widgetPositions, setWidgetPositions] = useState({
@@ -761,10 +780,10 @@ const GT3OverlaySystem = () => {
   const SessionInfoWidget = () => (
     <div className="space-y-2">
       <div className="text-sm font-medium text-white">
-        {telemetryData?.carName || "No Car"}
+        {sessionInfo?.car_name || telemetryData?.carName || "No Car"}
       </div>
       <div className="text-xs text-gray-400">
-        {telemetryData?.trackName || "No Track"}
+        {sessionInfo?.track_name || telemetryData?.trackName || "No Track"}
       </div>
       <div className="flex justify-between text-xs">
         <span className="text-gray-400">Lap:</span>
@@ -774,6 +793,18 @@ const GT3OverlaySystem = () => {
         <span className="text-gray-400">Position:</span>
         <span className="text-white">P{telemetryData?.position || "--"}</span>
       </div>
+      {sessionInfo && (
+        <div className="flex justify-between text-xs">
+          <span className="text-gray-400">Session:</span>
+          <span
+            className={`text-white ${
+              sessionInfo.session_active ? "text-green-400" : "text-gray-400"
+            }`}
+          >
+            {sessionInfo.session_active ? "Active" : "Inactive"}
+          </span>
+        </div>
+      )}
     </div>
   );
 

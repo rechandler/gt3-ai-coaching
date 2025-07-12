@@ -87,7 +87,7 @@ class LocalAICoach:
         
         # Message deduplication system
         self.recent_messages = {}  # message_text -> timestamp
-        self.message_cooldown = 8.0  # Seconds before same message can be sent again
+        self.message_cooldown = 3.0  # Seconds before same message can be sent again
         
         logger.info("🤖 Local AI Coach initialized - ready to learn your driving style")
     
@@ -108,6 +108,9 @@ class LocalAICoach:
             messages.extend(self._analyze_tire_management(telemetry))
             messages.extend(self._analyze_brake_usage(telemetry))
             messages.extend(self._analyze_throttle_application(telemetry))
+            
+            # General coaching tips (always available)
+            messages.extend(self._generate_general_tips(telemetry))
             
             # Advanced feedback (requires lap history)
             if len(self.laps) >= 2:
@@ -339,6 +342,69 @@ class LocalAICoach:
         elif improvement_rate < -0.01:  # Getting slower
             self.consistency_threshold *= 1.05  # Be more forgiving
             logger.info("📉 Performance declining - adjusting coaching approach")
+    
+    def _generate_general_tips(self, telemetry: Dict[str, Any]) -> List[CoachingMessage]:
+        """Generate general coaching tips that don't require specific driving data"""
+        messages = []
+        current_time = time.time()
+        speed = telemetry.get('speed', 0)
+        
+        # Generate different tips based on driving state and time
+        tip_sets = {
+            'preparation': [
+                "Focus on smooth inputs - consistency beats speed",
+                "Remember: brake in a straight line for maximum efficiency",
+                "Trail braking helps rotate the car through corners",
+                "Look ahead - where you look is where you'll go",
+                "Exit speed matters more than entry speed"
+            ],
+            'technical': [
+                "ABS activated? You're braking too hard - ease off slightly",
+                "Traction control kicking in? Progressive throttle is key",
+                "Tire temperature is crucial - watch those temps",
+                "Weight transfer is your friend - use it wisely",
+                "Find the racing line and stick to it"
+            ],
+            'mental': [
+                "Stay calm and focused - panic leads to mistakes",
+                "Every corner is a learning opportunity",
+                "Patience wins races - don't overdrive the car",
+                "Small improvements compound over time",
+                "Trust the process - speed will come naturally"
+            ],
+            'racecraft': [
+                "Defend the inside line but leave racing room",
+                "Plan your overtakes - patience creates opportunities",
+                "Watch your mirrors but don't let them distract you",
+                "Position matters - think three corners ahead",
+                "Racing is chess at 150mph - think strategically"
+            ]
+        }
+        
+        # Select a category based on session time to provide variety
+        categories = list(tip_sets.keys())
+        category_index = int((current_time / 10) % len(categories))  # Change every 10 seconds
+        selected_category = categories[category_index]
+        
+        # Select a tip from the category that hasn't been used recently
+        available_tips = []
+        for tip in tip_sets[selected_category]:
+            if tip not in self.recent_messages or \
+               current_time - self.recent_messages[tip] > self.message_cooldown:
+                available_tips.append(tip)
+        
+        if available_tips and len(messages) < 2:  # Only add if we don't have many messages
+            import random
+            selected_tip = random.choice(available_tips)
+            messages.append(CoachingMessage(
+                message=selected_tip,
+                category=f"tip_{selected_category}",
+                priority=3,
+                confidence=85,
+                data_source="general_tips"
+            ))
+        
+        return messages
     
     def _analyze_tire_management(self, telemetry: Dict[str, Any]) -> List[CoachingMessage]:
         """Analyze tire temperatures and provide management advice"""
@@ -608,20 +674,37 @@ class LocalAICoach:
                     self.recent_messages[message.message] = current_time
         
         if not filtered_messages:
-            # Return a default message if all messages were filtered out as duplicates
-            default_msg = "All systems looking good - keep it up!"
-            if default_msg not in self.recent_messages or \
-               current_time - self.recent_messages[default_msg] > self.message_cooldown * 2:
-                self.recent_messages[default_msg] = current_time
+            # Provide varied default messages to prevent monotony
+            default_messages = [
+                "All systems looking good - keep it up!",
+                "Ready to race - systems are green!",
+                "Car setup looks optimal - let's go racing!",
+                "Telemetry nominal - ready for action!",
+                "Everything checks out - time to hit the track!",
+                "All systems go - show them what you've got!",
+                "Perfect conditions - make every lap count!"
+            ]
+            
+            # Select a message that hasn't been used recently
+            import random
+            available_messages = []
+            for msg in default_messages:
+                if msg not in self.recent_messages or \
+                   current_time - self.recent_messages[msg] > self.message_cooldown:
+                    available_messages.append(msg)
+            
+            if available_messages:
+                selected_msg = random.choice(available_messages)
+                self.recent_messages[selected_msg] = current_time
                 return [CoachingMessage(
-                    message=default_msg,
+                    message=selected_msg,
                     category="general",
                     priority=2,
                     confidence=80,
                     data_source="default"
                 )]
             else:
-                return []  # Return empty if even default message is on cooldown
+                return []  # Return empty if all messages are on cooldown
         
         # Sort by priority (higher first)
         filtered_messages.sort(key=lambda x: x.priority, reverse=True)

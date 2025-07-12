@@ -25,8 +25,8 @@ if sys.platform == 'win32':
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
-# Import our local AI coach
-from ai_coach import LocalAICoach
+# Import our local AI coach - REMOVED, now handled by coaching-server.py
+# from ai_coach import LocalAICoach
 
 # Try different iRacing SDK imports
 try:
@@ -96,8 +96,8 @@ class GT3TelemetryServer:
         self.last_telemetry = {}
         self.last_session_info = {}
         
-        # Initialize AI Coach
-        self.ai_coach = LocalAICoach()
+        # Coaching server connection for sending telemetry data
+        self.coaching_server_ws = None
         
         # Initialize iRacing SDK
         self.ir = irsdk.IRSDK()
@@ -456,7 +456,7 @@ class GT3TelemetryServer:
             return False
     
 
-    def get_telemetry_data(self) -> Optional[Dict[str, Any]]:
+    async def get_telemetry_data(self) -> Optional[Dict[str, Any]]:
         """Get telemetry data - focus on core GT3 coaching data"""
         try:
             telemetry = {}
@@ -693,68 +693,16 @@ class GT3TelemetryServer:
             telemetry['carName'] = car_name
             telemetry['trackName'] = track_name
             
-            # Get AI coaching recommendations
-            try:
-                coaching_messages = self.ai_coach.process_telemetry(telemetry)
-                
-                if coaching_messages:
-                    # Use the highest priority message as primary
-                    primary_message = coaching_messages[0]
-                    telemetry['coachingMessage'] = primary_message.message
-                    telemetry['coachingPriority'] = primary_message.priority
-                    telemetry['coachingCategory'] = primary_message.category
-                    telemetry['coachingConfidence'] = int(primary_message.confidence)
-                    
-                    # Add secondary messages
-                    secondary_messages = []
-                    for msg in coaching_messages[1:]:
-                        secondary_messages.append({
-                            'message': msg.message,
-                            'category': msg.category,
-                            'priority': msg.priority,
-                            'confidence': int(msg.confidence)
-                        })
-                    telemetry['secondaryMessages'] = secondary_messages
-                    
-                    # Add improvement potential if available
-                    if hasattr(primary_message, 'improvement_potential') and primary_message.improvement_potential > 0:
-                        telemetry['improvementPotential'] = primary_message.improvement_potential
-                        
-                else:
-                    # Default when no specific coaching available
-                    telemetry['coachingMessage'] = "Analyzing your driving - keep it smooth!"
-                    telemetry['coachingPriority'] = 3
-                    telemetry['coachingCategory'] = "general"
-                    telemetry['coachingConfidence'] = 70
-                    telemetry['secondaryMessages'] = []
-                    
-            except Exception as e:
-                logger.error(f"AI coaching error: {e}")
-                telemetry['coachingMessage'] = "AI Coach temporarily offline"
-                telemetry['coachingPriority'] = 1
-                telemetry['coachingCategory'] = "general"
-                telemetry['coachingConfidence'] = 100
-                telemetry['secondaryMessages'] = []
+            # Send telemetry to coaching server for AI processing
+            await self.send_to_coaching_server(telemetry)
             
-            # Add enhanced user profile with AI insights
-            try:
-                session_summary = self.ai_coach.get_session_summary()
-                telemetry['userProfile'] = {
-                    'experienceLevel': 'learning',  # AI will adapt this
-                    'sessionsCompleted': session_summary.get('laps_completed', 0),
-                    'consistency': max(0, min(100, int((1 - session_summary.get('consistency', 0.1)) * 100))),
-                    'bestLapTime': session_summary.get('best_lap_time'),
-                    'improvementTrend': 'improving' if session_summary.get('improvement', 0) > 0 else 'stable',
-                    'aiStatus': 'active' if session_summary.get('baseline_established', False) else 'learning'
-                }
-            except Exception as e:
-                logger.debug(f"Error updating user profile: {e}")
-                telemetry['userProfile'] = {
-                    'experienceLevel': 'intermediate',
-                    'sessionsCompleted': 0,
-                    'consistency': 85,
-                    'aiStatus': 'initializing'
-                }
+            # Remove any coaching-related fields from telemetry before sending to UI
+            # Telemetry should be pure car/track data only
+            telemetry_clean = {k: v for k, v in telemetry.items() 
+                             if not k.startswith('coaching') and k not in ['secondaryMessages', 'improvementPotential', 'userProfile']}
+            
+            # Use clean telemetry for the rest of the function
+            telemetry = telemetry_clean
             tire_temp_mapping = {
                 'tireTempLF': 'LFTempCM',
                 'tireTempRF': 'RFTempCM', 
@@ -944,7 +892,7 @@ class GT3TelemetryServer:
                     self.is_connected_to_iracing = True
                 
                 # Get telemetry and session info
-                telemetry = self.get_telemetry_data()
+                telemetry = await self.get_telemetry_data()
                 session_info = self.get_session_info()
                 
                 if telemetry:
@@ -1001,6 +949,12 @@ class GT3TelemetryServer:
             
             # Start the telemetry collection loop
             await self.telemetry_loop()
+
+    async def send_to_coaching_server(self, telemetry_data):
+        """Send telemetry data to coaching server for AI processing"""
+        # For now, we'll let the coaching server connect directly to us
+        # This method is kept for future enhancements
+        pass
 
 def main():
     server = GT3TelemetryServer()

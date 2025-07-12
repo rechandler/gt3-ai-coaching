@@ -14,37 +14,24 @@ import UpdateNotification from "./UpdateNotification";
 const useIRacingTelemetry = () => {
   const [telemetryData, setTelemetryData] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
-  const ws = useRef(null);
+  const telemetryWs = useRef(null);
 
   useEffect(() => {
     const connectWebSocket = () => {
       try {
-        ws.current = new WebSocket("ws://localhost:8081");
+        telemetryWs.current = new WebSocket("ws://localhost:8081");
 
-        ws.current.onopen = () => {
+        telemetryWs.current.onopen = () => {
           console.log("Connected to iRacing telemetry server");
           setIsConnected(true);
         };
 
-        ws.current.onmessage = (event) => {
+        telemetryWs.current.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data);
-            console.log("Received message:", message); // Debug log
 
             // Handle different message types
             if (message.type === "Telemetry" && message.data) {
-              // Add specific fuel debugging
-              if (
-                message.data.fuelLevel !== undefined ||
-                message.data.fuelLevelPct !== undefined
-              ) {
-                console.log("Fuel data:", {
-                  fuelLevel: message.data.fuelLevel,
-                  fuelLevelPct: message.data.fuelLevelPct,
-                  fuelUsePerHour: message.data.fuelUsePerHour,
-                });
-              }
-
               setTelemetryData(message.data);
               setIsConnected(
                 message.isConnected || message.data.isConnected || false
@@ -63,13 +50,13 @@ const useIRacingTelemetry = () => {
           }
         };
 
-        ws.current.onclose = () => {
+        telemetryWs.current.onclose = () => {
           console.log("Disconnected from telemetry server");
           setIsConnected(false);
           setTimeout(connectWebSocket, 2000);
         };
 
-        ws.current.onerror = (error) => {
+        telemetryWs.current.onerror = (error) => {
           console.error("WebSocket error:", error);
           setIsConnected(false);
         };
@@ -83,13 +70,123 @@ const useIRacingTelemetry = () => {
     connectWebSocket();
 
     return () => {
-      if (ws.current) {
-        ws.current.close();
+      if (telemetryWs.current) {
+        telemetryWs.current.close();
       }
     };
   }, []);
 
   return { telemetryData, isConnected };
+};
+
+const useCoachingMessages = () => {
+  const [coachingMessages, setCoachingMessages] = useState([]);
+  const [isCoachingConnected, setIsCoachingConnected] = useState(false);
+  const coachingWs = useRef(null);
+
+  useEffect(() => {
+    const connectCoachingWebSocket = () => {
+      try {
+        coachingWs.current = new WebSocket("ws://localhost:8082");
+
+        coachingWs.current.onopen = () => {
+          console.log("Connected to AI coaching server");
+          setIsCoachingConnected(true);
+
+          // Request recent message history
+          coachingWs.current.send(
+            JSON.stringify({
+              type: "get_history",
+              count: 5,
+            })
+          );
+        };
+
+        coachingWs.current.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+
+            if (message.type === "coaching" && message.data) {
+              console.log("Received coaching message:", message.data);
+
+              const newMessage = {
+                id: message.id,
+                message: message.data.message,
+                category: message.data.category || "general",
+                priority: message.data.priority || 0,
+                confidence: message.data.confidence || 100,
+                timestamp: message.timestamp * 1000, // Convert to ms
+                isNew: true,
+                secondaryMessages: message.data.secondary_messages || [],
+                improvementPotential: message.data.improvement_potential,
+              };
+
+              setCoachingMessages((prev) => {
+                // Check if this message already exists
+                const exists = prev.some((msg) => msg.id === newMessage.id);
+                if (exists) {
+                  return prev;
+                }
+
+                // Add new message and keep sorted by priority
+                const updated = [newMessage, ...prev]
+                  .sort((a, b) => b.priority - a.priority)
+                  .slice(0, 4); // Keep max 4 messages
+
+                return updated;
+              });
+            } else if (message.type === "history" && message.messages) {
+              console.log(
+                "Received coaching message history:",
+                message.messages.length
+              );
+
+              const historyMessages = message.messages.map((msg) => ({
+                id: msg.id,
+                message: msg.data.message,
+                category: msg.data.category || "general",
+                priority: msg.data.priority || 0,
+                confidence: msg.data.confidence || 100,
+                timestamp: msg.timestamp * 1000,
+                isNew: false,
+                secondaryMessages: msg.data.secondary_messages || [],
+                improvementPotential: msg.data.improvement_potential,
+              }));
+
+              setCoachingMessages(historyMessages.slice(0, 4));
+            }
+          } catch (error) {
+            console.error("Error parsing coaching message:", error);
+          }
+        };
+
+        coachingWs.current.onclose = () => {
+          console.log("Disconnected from coaching server");
+          setIsCoachingConnected(false);
+          setTimeout(connectCoachingWebSocket, 2000);
+        };
+
+        coachingWs.current.onerror = (error) => {
+          console.error("Coaching WebSocket error:", error);
+          setIsCoachingConnected(false);
+        };
+      } catch (error) {
+        console.error("Failed to connect to coaching WebSocket:", error);
+        setIsCoachingConnected(false);
+        setTimeout(connectCoachingWebSocket, 5000);
+      }
+    };
+
+    connectCoachingWebSocket();
+
+    return () => {
+      if (coachingWs.current) {
+        coachingWs.current.close();
+      }
+    };
+  }, []);
+
+  return { coachingMessages, setCoachingMessages, isCoachingConnected };
 };
 
 const DraggableWidget = ({
@@ -178,6 +275,8 @@ const DraggableWidget = ({
 
 const GT3OverlaySystem = () => {
   const { telemetryData, isConnected } = useIRacingTelemetry();
+  const { coachingMessages, setCoachingMessages, isCoachingConnected } =
+    useCoachingMessages();
   const [showSettings, setShowSettings] = useState(false);
 
   const [widgetPositions, setWidgetPositions] = useState({
@@ -472,63 +571,44 @@ const GT3OverlaySystem = () => {
   );
 
   const CoachingWidget = () => {
-    const [coachingMessages, setCoachingMessages] = useState([]);
     const MESSAGE_DISPLAY_TIME = 12000; // 12 seconds per message
     const MAX_MESSAGES = 4; // Maximum messages to show at once
-
-    // Add new coaching messages and manage duplicates
-    useEffect(() => {
-      if (telemetryData?.coachingMessage && isConnected) {
-        const newMessage = {
-          id: Date.now(),
-          message: telemetryData.coachingMessage,
-          category: telemetryData.coachingCategory || "general",
-          priority: telemetryData.coachingPriority || 0,
-          confidence: telemetryData.coachingConfidence || 100,
-          timestamp: Date.now(),
-          isNew: true,
-        };
-
-        setCoachingMessages((prev) => {
-          // Check if this message already exists (duplicate prevention)
-          const isDuplicate = prev.some(
-            (msg) =>
-              msg.message === newMessage.message &&
-              Date.now() - msg.timestamp < MESSAGE_DISPLAY_TIME
-          );
-
-          if (isDuplicate) {
-            return prev; // Don't add duplicate
-          }
-
-          // Add new message and sort by priority
-          const updated = [newMessage, ...prev]
-            .sort((a, b) => b.priority - a.priority)
-            .slice(0, MAX_MESSAGES); // Keep only top messages
-
-          return updated;
-        });
-      }
-    }, [
-      telemetryData?.coachingMessage,
-      telemetryData?.coachingCategory,
-      telemetryData?.coachingPriority,
-      telemetryData?.coachingConfidence,
-      isConnected,
-    ]);
 
     // Clean up expired messages
     useEffect(() => {
       const interval = setInterval(() => {
-        setCoachingMessages((prev) =>
-          prev.filter(
-            (msg) => Date.now() - msg.timestamp < MESSAGE_DISPLAY_TIME
-          )
-        );
+        setCoachingMessages((prev) => {
+          const currentTime = Date.now();
+          const filtered = prev.filter((msg) => {
+            const messageAge = currentTime - msg.timestamp;
+            const isExpired = messageAge >= MESSAGE_DISPLAY_TIME;
+
+            if (isExpired) {
+              console.log(
+                `Message expired: "${msg.message}" (${(
+                  messageAge / 1000
+                ).toFixed(1)}s old)`
+              );
+            }
+
+            return !isExpired;
+          });
+
+          // Log when messages are removed
+          if (filtered.length !== prev.length) {
+            console.log(
+              `Cleaned up ${
+                prev.length - filtered.length
+              } expired messages. Remaining: ${filtered.length}`
+            );
+          }
+
+          return filtered;
+        });
       }, 1000);
 
       return () => clearInterval(interval);
-    }, []);
+    }, [MESSAGE_DISPLAY_TIME, setCoachingMessages]);
 
     // Mark messages as no longer new after a brief period
     useEffect(() => {
@@ -539,7 +619,7 @@ const GT3OverlaySystem = () => {
       }, 1000);
 
       return () => clearTimeout(timer);
-    }, [coachingMessages.length]);
+    }, [coachingMessages.length, setCoachingMessages]);
 
     return (
       <div className="bg-opacity-50 rounded p-2 min-h-16 w-80 border-l-4 border-blue-500">
@@ -547,6 +627,11 @@ const GT3OverlaySystem = () => {
           <div className="flex items-center space-x-2">
             <span className="text-sm font-medium text-blue-300">AI Coach</span>
             <span className="text-xs">🧠</span>
+            {isCoachingConnected ? (
+              <span className="text-xs text-green-400">●</span>
+            ) : (
+              <span className="text-xs text-red-400">●</span>
+            )}
           </div>
           <div className="text-xs text-gray-400">
             {coachingMessages.length} message
@@ -554,9 +639,11 @@ const GT3OverlaySystem = () => {
           </div>
         </div>
 
-        {!isConnected ? (
+        {!isConnected || !isCoachingConnected ? (
           <div className="text-sm text-gray-400 mt-1">
-            Waiting for iRacing connection...
+            {!isConnected
+              ? "Waiting for iRacing connection..."
+              : "Connecting to AI coach..."}
           </div>
         ) : coachingMessages.length === 0 ? (
           <div className="text-sm text-gray-400 mt-1">
@@ -604,6 +691,12 @@ const GT3OverlaySystem = () => {
                   <div className="text-xs text-gray-400 mt-1">
                     {Math.round(age)}s ago
                   </div>
+                  {msg.improvementPotential && (
+                    <div className="text-xs text-green-400 mt-1">
+                      Potential improvement:{" "}
+                      {msg.improvementPotential.toFixed(2)}s
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -646,42 +739,21 @@ const GT3OverlaySystem = () => {
   );
 
   const UserProfileWidget = () => {
-    const profile = telemetryData?.userProfile;
-    if (!profile) return <div className="text-gray-400">No profile data</div>;
-
+    // User profile data will now come from the coaching server
+    // For now, show a placeholder
     return (
       <div className="space-y-2">
         <div className="text-sm font-medium text-white">Driver Profile</div>
         <div className="text-xs space-y-1">
           <div className="flex justify-between">
-            <span className="text-gray-400">Level:</span>
-            <span className="text-white capitalize">
-              {profile.experienceLevel}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Sessions:</span>
-            <span className="text-white">{profile.sessionsCompleted}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Consistency:</span>
+            <span className="text-gray-400">Status:</span>
             <span className="text-white">
-              {profile.consistency ? profile.consistency.toFixed(0) : "--"}%
+              {isCoachingConnected ? "AI Active" : "Offline"}
             </span>
           </div>
-          {profile.weakAreas && profile.weakAreas.length > 0 && (
-            <div className="mt-2">
-              <div className="text-xs text-gray-400 mb-1">Focus Areas:</div>
-              {profile.weakAreas.map((area, index) => (
-                <div
-                  key={index}
-                  className="text-xs text-orange-400 bg-orange-900 bg-opacity-30 rounded px-2 py-1 mb-1"
-                >
-                  {area.replace("_", " ")}
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="text-xs text-gray-400">
+            Profile data will be available via coaching server
+          </div>
         </div>
       </div>
     );

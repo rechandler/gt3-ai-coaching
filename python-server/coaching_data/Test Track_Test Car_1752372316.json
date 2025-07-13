@@ -1,0 +1,22 @@
+{
+  "session_id": "Test Track_Test Car_1752372316",
+  "track_name": "Test Track",
+  "car_name": "Test Car",
+  "start_time": 1752372316.9960856,
+  "end_time": null,
+  "laps": [],
+  "best_lap_time": null,
+  "best_lap_number": null,
+  "baseline_established": false,
+  "driving_style": "unknown",
+  "coaching_intensity": 1.0,
+  "consistency_threshold": 0.05,
+  "corner_analysis": {},
+  "brake_point_history": {},
+  "speed_history": {},
+  "track_learning": {},
+  "optimal_shift_rpm_ranges": {},
+  "gear_shift_history": [],
+  "total_distance": 0.0,
+  "total_incidents": 0
+}

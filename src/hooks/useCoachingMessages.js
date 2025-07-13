@@ -6,6 +6,43 @@ export const useCoachingMessages = () => {
   const [sessionInfo, setSessionInfo] = useState(null); // Add session info state
   const coachingWs = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const MESSAGE_DISPLAY_TIME = 8000; // 8 seconds per message
+
+  // Auto-cleanup expired messages
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCoachingMessages((prev) => {
+        const currentTime = Date.now();
+        const filtered = prev.filter((msg) => {
+          const messageAge = currentTime - msg.timestamp;
+          const isExpired = messageAge >= MESSAGE_DISPLAY_TIME;
+
+          if (isExpired) {
+            console.log(
+              `Message auto-expired and removed: "${msg.message}" (${(
+                messageAge / 1000
+              ).toFixed(1)}s old)`
+            );
+          }
+
+          return !isExpired; // Only keep non-expired messages
+        });
+
+        // Log when messages are removed
+        if (filtered.length !== prev.length) {
+          console.log(
+            `Auto-removed ${
+              prev.length - filtered.length
+            } expired messages. Remaining: ${filtered.length}`
+          );
+        }
+
+        return filtered;
+      });
+    }, 500); // Check every 500ms for smooth removal
+
+    return () => clearInterval(interval);
+  }, []); // Empty dependency array - this should run independently
 
   useEffect(() => {
     const connectCoachingWebSocket = () => {
@@ -92,22 +129,28 @@ export const useCoachingMessages = () => {
                 message.messages.length
               );
 
-              const historyMessages = message.messages.map((msg) => ({
-                id: msg.id,
-                message: msg.data.message,
-                category: msg.data.category || "general",
-                priority: msg.data.priority || 0,
-                confidence: msg.data.confidence || 100,
-                timestamp: msg.timestamp * 1000,
-                isNew: false,
-                secondaryMessages: msg.data.secondary_messages || [],
-                improvementPotential: msg.data.improvement_potential,
-              }));
+              // Only load recent history (last 2 minutes) to avoid overwhelming the UI
+              const currentTime = Date.now();
+              const twoMinutesAgo = currentTime - (2 * 60 * 1000);
+
+              const historyMessages = message.messages
+                .filter((msg) => (msg.timestamp * 1000) > twoMinutesAgo) // Filter to recent messages only
+                .map((msg) => ({
+                  id: msg.id,
+                  message: msg.data.message,
+                  category: msg.data.category || "general",
+                  priority: msg.data.priority || 0,
+                  confidence: msg.data.confidence || 100,
+                  timestamp: msg.timestamp * 1000,
+                  isNew: false,
+                  secondaryMessages: msg.data.secondary_messages || [],
+                  improvementPotential: msg.data.improvement_potential,
+                }));
 
               setCoachingMessages(
                 historyMessages
                   .sort((a, b) => b.timestamp - a.timestamp)
-                  .slice(0, 6)
+                  .slice(0, 4) // Match the max messages in UI
               );
             }
           } catch (error) {
@@ -170,9 +213,23 @@ export const useCoachingMessages = () => {
     };
   }, []);
 
+  // Function to manually clear all messages
+  const clearMessages = () => {
+    setCoachingMessages([]);
+  };
+
+  // Function to mark messages as no longer new
+  const markMessagesAsRead = () => {
+    setCoachingMessages((prev) =>
+      prev.map((msg) => ({ ...msg, isNew: false }))
+    );
+  };
+
   return {
     coachingMessages,
     setCoachingMessages,
+    clearMessages,
+    markMessagesAsRead,
     isCoachingConnected,
     sessionInfo,
   };

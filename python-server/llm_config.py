@@ -11,7 +11,7 @@
 LLM_ENABLED = True  # Set to True to enable LLM coaching
 OPENAI_API_KEY = "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"  # Replace with your actual API key
 LLM_MODEL = "gpt-3.5-turbo"  # Can also use "gpt-4" for better quality
-LLM_COOLDOWN = 3.0  # Seconds between LLM messages
+LLM_COOLDOWN = 2.0  # Seconds between LLM messages
 
 # Track section names (can be customized for specific tracks)
 TRACK_SECTIONS = {

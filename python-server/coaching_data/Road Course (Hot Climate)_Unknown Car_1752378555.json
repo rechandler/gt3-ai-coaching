@@ -1,0 +1,48 @@
+{
+  "session_id": "Road Course (Hot Climate)_Unknown Car_1752378555",
+  "track_name": "Road Course (Hot Climate)",
+  "car_name": "Unknown Car",
+  "start_time": 1752378555.549542,
+  "end_time": null,
+  "laps": [
+    {
+      "lap_number": 1,
+      "lap_time": 103.45303344726562,
+      "timestamp": 1752378771.691204
+    },
+    {
+      "lap_number": 2,
+      "lap_time": 102.29993438720703,
+      "timestamp": 1752378874.0142815
+    },
+    {
+      "lap_number": 3,
+      "lap_time": 102.4024658203125,
+      "timestamp": 1752378976.426031
+    },
+    {
+      "lap_number": 4,
+      "lap_time": 103.57223510742188,
+      "timestamp": 1752379079.9965086
+    },
+    {
+      "lap_number": 5,
+      "lap_time": 101.96956634521484,
+      "timestamp": 1752379181.9758132
+    }
+  ],
+  "best_lap_time": 101.96956634521484,
+  "best_lap_number": 5,
+  "baseline_established": true,
+  "driving_style": "unknown",
+  "coaching_intensity": 1.0,
+  "consistency_threshold": 0.02,
+  "corner_analysis": {},
+  "brake_point_history": {},
+  "speed_history": {},
+  "track_learning": {},
+  "optimal_shift_rpm_ranges": {},
+  "gear_shift_history": [],
+  "total_distance": 0.0,
+  "total_incidents": 0
+}

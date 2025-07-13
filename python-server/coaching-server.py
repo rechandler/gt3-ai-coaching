@@ -79,28 +79,29 @@ class CoachingServer:
         self.clients.discard(websocket)
         logger.info(f"❌ Coaching client disconnected")
     
-    async def broadcast_message(self, message_data):
-        """Broadcast coaching message to all connected clients"""
+    async def broadcast_message(self, message_data, message_type="coaching"):
+        """Broadcast message to all connected clients"""
         if not self.clients:
             return
         
         # Create message with unique ID
         self.last_message_id += 1
-        coaching_message = {
-            "type": "coaching",
+        message = {
+            "type": message_type,
             "id": self.last_message_id,
             "timestamp": time.time(),
             "data": message_data
         }
         
-        # Add to queue (keep last 50 messages)
-        self.message_queue.append(coaching_message)
-        if len(self.message_queue) > 50:
-            self.message_queue.pop(0)
+        # Add to queue only if it's a coaching message (keep last 50 messages)
+        if message_type == "coaching":
+            self.message_queue.append(message)
+            if len(self.message_queue) > 50:
+                self.message_queue.pop(0)
         
         # Broadcast to all clients
         disconnected_clients = set()
-        message_json = json.dumps(coaching_message)
+        message_json = json.dumps(message)
         
         for client in self.clients:
             try:
@@ -115,7 +116,11 @@ class CoachingServer:
         for client in disconnected_clients:
             self.clients.discard(client)
         
-        logger.info(f"📢 Broadcasted coaching message to {len(self.clients)} clients: {message_data.get('message', '')[:50]}...")
+        # Log differently based on message type
+        if message_type == "coaching":
+            logger.info(f"📢 Broadcasted coaching message to {len(self.clients)} clients: {message_data.get('message', '')[:50]}...")
+        else:
+            logger.debug(f"📢 Broadcasted {message_type} to {len(self.clients)} clients")
     
     async def receive_telemetry(self, websocket, path):
         """Receive telemetry data from telemetry server"""
@@ -178,6 +183,8 @@ class CoachingServer:
         last_coaching_message = None
         last_message_time = 0
         min_message_interval = 3.0  # Minimum 3 seconds between messages
+        last_session_info_time = 0
+        session_info_interval = 10.0  # Send session info every 10 seconds
         
         # Connect to telemetry server to receive data
         telemetry_ws = None
@@ -211,6 +218,40 @@ class CoachingServer:
                             # Auto-start session if not active
                             if not self.current_session_active:
                                 await self._try_start_session(telemetry_data)
+                            
+                            # Send periodic session info updates (every 10 seconds)
+                            # Always send session info if we have valid track/car data, regardless of session status
+                            current_time = time.time()
+                            track_display_name = telemetry_data.get('trackDisplayName', 'Unknown Track')
+                            track_name = telemetry_data.get('trackName', track_display_name)
+                            car_name = telemetry_data.get('driverCarName', telemetry_data.get('carName', 'Unknown Car'))
+                            
+                            if (current_time - last_session_info_time >= session_info_interval and
+                                track_name not in ['Unknown Track', 'iRacing Track'] and
+                                car_name != 'Unknown Car'):
+                                
+                                # Use current track/car data if session not active, otherwise use ai_coach data
+                                if self.current_session_active:
+                                    display_track = self.ai_coach.track_name
+                                    display_car = self.ai_coach.car_name
+                                    baseline_established = self.ai_coach.baseline_established
+                                else:
+                                    display_track = track_name
+                                    display_car = car_name
+                                    baseline_established = False
+                                
+                                session_info_only = {
+                                    "session_info": {
+                                        "track_name": display_track,
+                                        "car_name": display_car,
+                                        "session_active": self.current_session_active,
+                                        "baseline_established": baseline_established
+                                    }
+                                }
+                                
+                                logger.debug(f"📊 Broadcasting session info: {display_track} (active: {self.current_session_active})")
+                                await self.broadcast_message(session_info_only, "session_info")
+                                last_session_info_time = current_time
                             
                             # Check if we should process coaching
                             should_coach = self.should_generate_coaching(telemetry_data)
@@ -288,14 +329,17 @@ class CoachingServer:
     async def _try_start_session(self, telemetry_data):
         """Try to auto-start a session based on telemetry data"""
         try:
-            # Extract track and car info
+            # Extract track and car info - prioritize WeekendInfo data
             track_display_name = telemetry_data.get('trackDisplayName', 'Unknown Track')
             track_name = telemetry_data.get('trackName', track_display_name)
-            car_name = telemetry_data.get('driverCarName', 'Unknown Car')
+            car_name = telemetry_data.get('driverCarName', telemetry_data.get('carName', 'Unknown Car'))
+            
+            # Log what we got
+            logger.debug(f"Session info from telemetry: track='{track_name}', car='{car_name}'")
             
             # Only start if we have valid data and car is moving
             speed = telemetry_data.get('speed', 0)
-            if speed > 5 and track_name != 'Unknown Track':
+            if speed > 5 and track_name not in ['Unknown Track', 'iRacing Track']:
                 success = self.ai_coach.start_session(track_name, car_name, load_previous=True)
                 if success:
                     self.current_session_active = True

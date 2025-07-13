@@ -123,6 +123,10 @@ export const useCoachingMessages = () => {
 
                 return updated;
               });
+            } else if (message.type === "session_info" && message.data.session_info) {
+              // Handle session-info-only messages
+              console.log("Received session info update:", message.data.session_info);
+              setSessionInfo(message.data.session_info);
             } else if (message.type === "history" && message.messages) {
               console.log(
                 "Received coaching message history:",

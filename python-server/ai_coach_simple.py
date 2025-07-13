@@ -1042,6 +1042,16 @@ class LocalAICoach:
         if current_time - self.last_llm_message < self.llm_cooldown:
             return []
         
+        # Log telemetry for debugging (every 30 frames to avoid spam)
+        if hasattr(self, '_debug_counter'):
+            self._debug_counter += 1
+        else:
+            self._debug_counter = 0
+            
+        if self._debug_counter % 30 == 0:  # Log every 30 telemetry updates
+            speed = telemetry.get('Speed', 0)
+            logger.info(f"🔍 Telemetry check: Speed={speed:.1f}, Brake={telemetry.get('Brake', 0):.2f}, Throttle={telemetry.get('Throttle', 0):.2f}, Steering={telemetry.get('SteeringWheelAngle', 0):.2f}")
+        
         # Detect coaching situation
         coaching_context = self._detect_coaching_moments(telemetry)
         if not coaching_context:
@@ -1076,7 +1086,7 @@ class LocalAICoach:
         recent_data = list(self.telemetry_buffer)[-30:] if len(self.telemetry_buffer) >= 30 else list(self.telemetry_buffer)
         current_section = self._get_track_section(telemetry.get('LapDistPct', 0))
         
-        # Heavy braking - simplified detection
+        # Heavy braking - much more sensitive for hobbyist drivers
         current_brake = telemetry.get('Brake', 0)
         current_speed = telemetry.get('Speed', 0)
         
@@ -1086,10 +1096,10 @@ class LocalAICoach:
         else:
             current_speed_mph = current_speed  # Already in mph
         
-        if current_brake > 0.75 and current_speed_mph > 50:  # Significant braking
+        if current_brake >= 0.5 and current_speed_mph > 40:  # Hobbyist: 50%+ brake at 40mph
             return f"heavy_braking_into_{current_section.lower().replace(' ', '_')}"
         
-        # Throttle control issues - simplified
+        # Throttle control issues - much more sensitive
         current_throttle = telemetry.get('Throttle', 0)
         if len(recent_data) >= 5:
             throttle_changes = []
@@ -1097,28 +1107,25 @@ class LocalAICoach:
                 if i > 0:
                     throttle_changes.append(abs(recent_data[i].get('Throttle', 0) - recent_data[i-1].get('Throttle', 0)))
             
-            if throttle_changes and max(throttle_changes) > 0.25:  # Sudden throttle changes
+            if throttle_changes and max(throttle_changes) >= 0.15:  # Hobbyist: 15%+ throttle changes
                 return f"throttle_control_issue_at_{current_section.lower().replace(' ', '_')}"
         
-        # Understeer/oversteer detection - simplified
+        # Simple steering detection for hobbyist learning
         steering_angle = telemetry.get('SteeringWheelAngle', 0)
-        if abs(steering_angle) > 0.45:  # Significant steering input
-            if len(recent_data) >= 5:
-                steering_changes = []
-                for i in range(max(0, len(recent_data)-5), len(recent_data)):
-                    if i > 0:
-                        steering_changes.append(abs(recent_data[i].get('SteeringWheelAngle', 0) - recent_data[i-1].get('SteeringWheelAngle', 0)))
-                
-                if steering_changes and max(steering_changes) > 0.15:  # Steering corrections
-                    return f"steering_correction_at_{current_section.lower().replace(' ', '_')}"
+        if abs(steering_angle) >= 0.25:  # Hobbyist: Any 25°+ steering gives tips
+            return f"handling_tip_at_{current_section.lower().replace(' ', '_')}"
         
-        # Corner exit issues - for aggressive scenarios
-        if current_throttle > 0.55 and abs(steering_angle) > 0.35:  # Aggressive corner exit
+        # Corner exit issues - much more sensitive for learning
+        if current_throttle >= 0.4 and abs(steering_angle) >= 0.2:  # Hobbyist: 40%+ throttle + 20°+ steering
             return f"corner_exit_at_{current_section.lower().replace(' ', '_')}"
         
-        # Only trigger on very high speeds (rare but coaching-worthy)
-        if current_speed_mph > 130:  # Very high speed situations
+        # Medium-high speed coaching (helpful for hobbyists)
+        if current_speed_mph >= 90:  # Hobbyist: 90mph+ for speed tips
             return f"high_speed_section_{current_section.lower().replace(' ', '_')}"
+        
+        # Late braking detection (common hobbyist issue)
+        if current_brake >= 0.3 and current_speed_mph > 60:  # Hobbyist: 30%+ brake at speed
+            return f"late_braking_at_{current_section.lower().replace(' ', '_')}"
         
         return None
     

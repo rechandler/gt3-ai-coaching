@@ -1,41 +1,32 @@
 {
   "sessions": [
     {
-      "session_id": "Watkins Glen_Porsche 992 GT3 R_1752373382",
-      "track_name": "Watkins Glen",
-      "car_name": "Porsche 992 GT3 R",
-      "start_time": 1752373382.4425411,
+      "session_id": "Road Course (Hot Climate)_BMW M4 GT3 (estimated)_1752380370",
+      "track_name": "Road Course (Hot Climate)",
+      "car_name": "BMW M4 GT3 (estimated)",
+      "start_time": 1752380370.1247184,
       "end_time": null,
       "best_lap_time": null,
       "baseline_established": false
     },
     {
-      "session_id": "Watkins Glen_Porsche 992 GT3 R_1752373440",
-      "track_name": "Watkins Glen",
-      "car_name": "Porsche 992 GT3 R",
-      "start_time": 1752373440.4018047,
+      "session_id": "Road Course (Hot Climate)_BMW M4 GT3 (estimated)_1752380915",
+      "track_name": "Road Course (Hot Climate)",
+      "car_name": "BMW M4 GT3 (estimated)",
+      "start_time": 1752380915.669966,
       "end_time": null,
       "best_lap_time": null,
       "baseline_established": false
     },
     {
-      "session_id": "Watkins Glen_Porsche 992 GT3 R_1752373533",
-      "track_name": "Watkins Glen",
-      "car_name": "Porsche 992 GT3 R",
-      "start_time": 1752373533.5466254,
-      "end_time": null,
-      "best_lap_time": null,
-      "baseline_established": false
-    },
-    {
-      "session_id": "Watkins Glen_Porsche 992 GT3 R_1752373571",
-      "track_name": "Watkins Glen",
-      "car_name": "Porsche 992 GT3 R",
-      "start_time": 1752373571.9193687,
+      "session_id": "Road Course (Hot Climate)_BMW M4 GT3 (estimated)_1752380965",
+      "track_name": "Road Course (Hot Climate)",
+      "car_name": "BMW M4 GT3 (estimated)",
+      "start_time": 1752380965.750176,
       "end_time": null,
       "best_lap_time": null,
       "baseline_established": false
     }
   ],
-  "last_updated": 1752373571.920074
+  "last_updated": 1752380965.7508507
 }

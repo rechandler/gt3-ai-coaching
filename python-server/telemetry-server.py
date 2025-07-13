@@ -245,41 +245,174 @@ class GT3TelemetryServer:
     def get_session_info(self) -> Optional[Dict[str, Any]]:
         """Get session information - extract real data when possible"""
         try:
-            # Try multiple methods to get session info
+            # Method 1: Direct access to WeekendInfo like in raw Python session
+            try:
+                weekend_info_direct = self.ir['WeekendInfo']
+                if weekend_info_direct and isinstance(weekend_info_direct, dict):
+                    track_name = weekend_info_direct.get('TrackDisplayName', '')
+                    if track_name and track_name not in ['iRacing Track', '']:
+                        logger.info(f"🎯 DIRECT ACCESS SUCCESS - Found real track: {track_name}")
+                        
+                        # Build complete session info from direct access
+                        session_info_raw = {
+                            'WeekendInfo': weekend_info_direct,
+                            'DriverInfo': {
+                                'DriverCarIdx': 0,
+                                'Drivers': [{
+                                    'CarIdx': 0,
+                                    'CarScreenName': 'GT3 Car',
+                                    'CarPath': 'gt3',
+                                    'CarID': 0,
+                                    'CarClassShortName': 'GT3'
+                                }]
+                            },
+                            'SessionInfo': {
+                                'Sessions': [{
+                                    'SessionName': weekend_info_direct.get('EventType', 'Practice'),
+                                    'SessionType': weekend_info_direct.get('EventType', 'Practice')
+                                }]
+                            }
+                        }
+                        
+                        logger.info(f"✅ DIRECT ACCESS - Created complete session info")
+                        return self._build_final_session_info(session_info_raw)
+                        
+            except Exception as e:
+                logger.debug(f"Direct WeekendInfo access failed: {e}")
+            
+            # Fallback: Try other methods if direct access fails
             session_info_raw = None
             
-            # Method 1: Direct session_info attribute
-            if self.available_methods.get('session_info', {}).get('exists'):
+            # Method 2: Force check if session info update is available
+            if hasattr(self.ir, 'session_info_update'):
+                try:
+                    # Force check for session info updates
+                    update_available = self.ir.session_info_update
+                    if update_available:
+                        logger.info("🔄 Session info update detected - forcing refresh")
+                    
+                    # Get fresh session info
+                    session_info_raw = getattr(self.ir, 'session_info', None)
+                    if session_info_raw:
+                        logger.info(f"✅ Got fresh session info via method 2: {type(session_info_raw)}")
+                except Exception as e:
+                    logger.debug(f"Method 2 (with update check) failed: {e}")
+            
+            # Method 3: Direct session_info attribute  
+            if not session_info_raw and self.available_methods.get('session_info', {}).get('exists'):
                 try:
                     session_info_raw = getattr(self.ir, 'session_info', None)
                     if session_info_raw:
-                        logger.debug(f"Got session info via method 1: {type(session_info_raw)}")
+                        logger.debug(f"Got session info via method 3: {type(session_info_raw)}")
                 except Exception as e:
-                    logger.debug(f"Method 1 failed: {e}")
+                    logger.debug(f"Method 3 failed: {e}")
             
-            # Method 2: get_session_info method  
+            # Method 4: get_session_info method  
             if not session_info_raw and self.available_methods.get('get_session_info', {}).get('callable'):
                 try:
                     session_info_raw = self.ir.get_session_info()
                     if session_info_raw:
-                        logger.debug(f"Got session info via method 2: {type(session_info_raw)}")
+                        logger.debug(f"Got session info via method 4: {type(session_info_raw)}")
                 except Exception as e:
-                    logger.debug(f"Method 2 failed: {e}")
+                    logger.debug(f"Method 4 failed: {e}")
             
-            # Method 3: Try session_info_update approach
+            # Method 5: Try session_info_update approach
             if not session_info_raw and hasattr(self.ir, 'get_session_info_update_by_key'):
                 try:
                     # Try to get each section separately
                     for section in ['DriverInfo', 'WeekendInfo', 'SessionInfo']:
                         section_data = self.ir.get_session_info_update_by_key(section)
                         if section_data:
-                            logger.debug(f"Got {section} via method 3: {type(section_data)}")
+                            logger.debug(f"Got {section} via method 5: {type(section_data)}")
                             # If we get any section, we can build from there
                             if not session_info_raw:
                                 session_info_raw = {}
                             session_info_raw[section] = section_data
                 except Exception as e:
-                    logger.debug(f"Method 3 failed: {e}")
+                    logger.debug(f"Method 5 failed: {e}")
+            
+            # Method 6: Try enhanced telemetry approach for track info
+            if not session_info_raw or (session_info_raw and 
+                session_info_raw.get('WeekendInfo', {}).get('TrackDisplayName') in ['iRacing Track', None]):
+                try:
+                    logger.info("🧪 ENHANCED SESSION MODE: Trying all possible track extraction methods")
+                    
+                    # Try to get track info directly from telemetry in Test Drive mode
+                    test_track_name = self.safe_get_telemetry('TrackDisplayName')
+                    test_track_config = self.safe_get_telemetry('TrackConfigName') 
+                    test_track_id = self.safe_get_telemetry('TrackID')
+                    test_track_length = self.safe_get_telemetry('TrackLength')
+                    
+                    # Try additional telemetry fields that might contain track info
+                    track_name_short = self.safe_get_telemetry('TrackDisplayNameShort')
+                    track_config_short = self.safe_get_telemetry('TrackConfigNameShort')
+                    track_city = self.safe_get_telemetry('TrackCity')
+                    track_country = self.safe_get_telemetry('TrackCountry')
+                    
+                    logger.info(f"🧪 ENHANCED SESSION - ALL telemetry track fields:")
+                    logger.info(f"🧪 ENHANCED SESSION -   TrackDisplayName: '{test_track_name}'")
+                    logger.info(f"🧪 ENHANCED SESSION -   TrackConfigName: '{test_track_config}'")
+                    logger.info(f"🧪 ENHANCED SESSION -   TrackDisplayNameShort: '{track_name_short}'")
+                    logger.info(f"🧪 ENHANCED SESSION -   TrackConfigNameShort: '{track_config_short}'")
+                    logger.info(f"🧪 ENHANCED SESSION -   TrackCity: '{track_city}'")
+                    logger.info(f"🧪 ENHANCED SESSION -   TrackCountry: '{track_country}'")
+                    logger.info(f"🧪 ENHANCED SESSION -   TrackID: '{test_track_id}'")
+                    logger.info(f"🧪 ENHANCED SESSION -   TrackLength: '{test_track_length}'")
+                    
+                    # Try to get session type info
+                    session_type = self.safe_get_telemetry('SessionType')
+                    session_sub_type = self.safe_get_telemetry('SessionSubType')
+                    session_name = self.safe_get_telemetry('SessionName')
+                    
+                    logger.info(f"🧪 ENHANCED SESSION - Session info:")
+                    logger.info(f"🧪 ENHANCED SESSION -   SessionType: '{session_type}'")
+                    logger.info(f"🧪 ENHANCED SESSION -   SessionSubType: '{session_sub_type}'")
+                    logger.info(f"🧪 ENHANCED SESSION -   SessionName: '{session_name}'")
+                    
+                    # Determine the best track name to use
+                    real_track_name = None
+                    
+                    # Priority order: full name > short name > city/country combo
+                    if test_track_name and test_track_name not in ['iRacing Track', '', None]:
+                        real_track_name = test_track_name
+                        logger.info(f"🎯 ENHANCED SESSION - Using TrackDisplayName: {real_track_name}")
+                    elif track_name_short and track_name_short not in ['iRacing Track', '', None]:
+                        real_track_name = track_name_short
+                        logger.info(f"🎯 ENHANCED SESSION - Using TrackDisplayNameShort: {real_track_name}")
+                    elif track_city and track_country:
+                        real_track_name = f"{track_city} ({track_country})"
+                        logger.info(f"🎯 ENHANCED SESSION - Using City/Country: {real_track_name}")
+                    
+                    # If we found real track data via telemetry, create session info
+                    if real_track_name:
+                        logger.info(f"🎯 ENHANCED SESSION - Found real track via telemetry: {real_track_name}")
+                        
+                        # Build comprehensive track config name
+                        real_config_name = test_track_config or track_config_short or ''
+                        
+                        session_info_raw = {
+                            'WeekendInfo': {
+                                'TrackDisplayName': real_track_name,
+                                'TrackConfigName': real_config_name,
+                                'TrackCity': track_city or 'Unknown',
+                                'TrackCountry': track_country or 'Unknown',
+                                'TrackID': test_track_id or 0,
+                                'TrackLength': f"{test_track_length:.2f} km" if test_track_length else '0.00 km'
+                            },
+                            'SessionInfo': {
+                                'Sessions': [{
+                                    'SessionName': session_name or 'Time Attack',
+                                    'SessionType': session_type or 'Time Attack',
+                                    'SessionSubType': session_sub_type or ''
+                                }]
+                            }
+                        }
+                        logger.info(f"✅ ENHANCED SESSION - Created session info from telemetry")
+                    else:
+                        logger.warning(f"❌ ENHANCED SESSION - No real track data found in any telemetry field")
+                        
+                except Exception as e:
+                    logger.debug(f"Method 6 (enhanced telemetry) failed: {e}")
             
             # Parse session info if we have it as a string (YAML format)
             if session_info_raw and isinstance(session_info_raw, str):
@@ -300,89 +433,7 @@ class GT3TelemetryServer:
                     logger.debug(f"Could not parse session info string: {e}")
                     session_info_raw = None
             
-            # Create comprehensive session info structure
-            basic_session_info = {
-                'WeekendInfo': {
-                    'TrackDisplayName': 'iRacing Track',
-                    'TrackConfigName': '',
-                    'TrackID': 0,
-                    'TrackLength': '0.00 km',
-                    'TrackCity': 'Unknown',
-                    'TrackCountry': 'Unknown'
-                },
-                'DriverInfo': {
-                    'DriverCarIdx': 0,
-                    'Drivers': [{
-                        'CarIdx': 0,
-                        'CarScreenName': 'GT3 Car',
-                        'CarPath': 'gt3',
-                        'CarID': 0,
-                        'CarClassShortName': 'GT3'
-                    }]
-                },
-                'SessionInfo': {
-                    'Sessions': [{
-                        'SessionName': 'Practice',
-                        'SessionType': 'Practice'
-                    }]
-                }
-            }
-            
-            # If we have real session info, merge it with our structure
-            if session_info_raw and isinstance(session_info_raw, dict):
-                try:
-                    # Update with real data if available
-                    if 'WeekendInfo' in session_info_raw:
-                        basic_session_info['WeekendInfo'].update(session_info_raw['WeekendInfo'])
-                        logger.debug(f"Updated WeekendInfo from session data")
-                    if 'DriverInfo' in session_info_raw:
-                        basic_session_info['DriverInfo'].update(session_info_raw['DriverInfo'])
-                        logger.debug(f"Updated DriverInfo from session data")
-                    if 'SessionInfo' in session_info_raw:
-                        basic_session_info['SessionInfo'].update(session_info_raw['SessionInfo'])
-                        logger.debug(f"Updated SessionInfo from session data")
-                except Exception as e:
-                    logger.debug(f"Could not merge session info: {e}")
-            else:
-                logger.debug("No valid session info found, using enhanced defaults")
-            
-            # Enhance defaults with telemetry data if available
-            try:
-                player_car_class = self.safe_get_telemetry('PlayerCarClass')
-                if player_car_class is not None:
-                    # Update car info based on telemetry
-                    drivers = basic_session_info['DriverInfo']['Drivers']
-                    if drivers and len(drivers) > 0:
-                        if drivers[0]['CarScreenName'] == 'GT3 Car':
-                            # Enhance with class-specific names
-                            class_names = {
-                                0: 'GT3 Class Car',
-                                1: 'GTE Class Car', 
-                                2: 'LMP2 Class Car',
-                                3: 'LMP1 Class Car',
-                                4: 'Formula Class Car'
-                            }
-                            drivers[0]['CarScreenName'] = class_names.get(player_car_class, f'Class {player_car_class} Car')
-                            drivers[0]['CarClassShortName'] = f'Class {player_car_class}'
-                            
-                track_temp = self.safe_get_telemetry('TrackTemp')
-                if track_temp is not None:
-                    # Enhance track info based on temperature
-                    if basic_session_info['WeekendInfo']['TrackDisplayName'] == 'iRacing Track':
-                        if track_temp > 35:
-                            basic_session_info['WeekendInfo']['TrackDisplayName'] = 'Hot Climate Track'
-                            basic_session_info['WeekendInfo']['TrackCountry'] = 'Warm Region'
-                        elif track_temp < 15:
-                            basic_session_info['WeekendInfo']['TrackDisplayName'] = 'Cold Climate Track'
-                            basic_session_info['WeekendInfo']['TrackCountry'] = 'Cool Region'
-                        else:
-                            basic_session_info['WeekendInfo']['TrackDisplayName'] = 'Temperate Climate Track'
-                            basic_session_info['WeekendInfo']['TrackCountry'] = 'Moderate Region'
-                            
-            except Exception as e:
-                logger.debug(f"Could not enhance session info with telemetry: {e}")
-            
-            return basic_session_info
+            return self._build_final_session_info(session_info_raw)
             
         except Exception as e:
             logger.warning(f"Session info unavailable: {e}")
@@ -392,6 +443,87 @@ class GT3TelemetryServer:
                 'DriverInfo': {'Drivers': [{'CarScreenName': 'Race Car', 'CarIdx': 0}]},
                 'SessionInfo': {'Sessions': [{'SessionName': 'Practice'}]}
             }
+    
+    def _build_final_session_info(self, session_info_raw):
+        """Helper method to build final session info structure"""
+        # Create comprehensive session info structure
+        basic_session_info = {
+            'WeekendInfo': {
+                'TrackDisplayName': 'iRacing Track',
+                'TrackConfigName': '',
+                'TrackID': 0,
+                'TrackLength': '0.00 km',
+                'TrackCity': 'Unknown',
+                'TrackCountry': 'Unknown'
+            },
+            'DriverInfo': {
+                'DriverCarIdx': 0,
+                'Drivers': [{
+                    'CarIdx': 0,
+                    'CarScreenName': 'GT3 Car',
+                    'CarPath': 'gt3',
+                    'CarID': 0,
+                    'CarClassShortName': 'GT3'
+                }]
+            },
+            'SessionInfo': {
+                'Sessions': [{
+                    'SessionName': 'Practice',
+                    'SessionType': 'Practice'
+                }]
+            }
+        }
+        
+        # If we have real session info, merge it with our structure
+        if session_info_raw and isinstance(session_info_raw, dict):
+            try:
+                logger.info(f"🔍 SESSION DEBUG - RAW session_info_raw object:")
+                logger.info(f"🔍 SESSION DEBUG - {json.dumps(session_info_raw, indent=2, default=str)}")
+                
+                # Update with real data if available
+                if 'WeekendInfo' in session_info_raw:
+                    logger.info(f"🔍 SESSION DEBUG - Found WeekendInfo in session_info_raw:")
+                    for key, value in session_info_raw['WeekendInfo'].items():
+                        logger.info(f"🔍 SESSION DEBUG -   {key}: '{value}'")
+                    basic_session_info['WeekendInfo'].update(session_info_raw['WeekendInfo'])
+                    logger.info(f"✅ Updated WeekendInfo from session data: {session_info_raw['WeekendInfo'].get('TrackDisplayName', 'No track name')}")
+                if 'DriverInfo' in session_info_raw:
+                    basic_session_info['DriverInfo'].update(session_info_raw['DriverInfo'])
+                    logger.debug(f"Updated DriverInfo from session data")
+                if 'SessionInfo' in session_info_raw:
+                    basic_session_info['SessionInfo'].update(session_info_raw['SessionInfo'])
+                    logger.debug(f"Updated SessionInfo from session data")
+            except Exception as e:
+                logger.debug(f"Could not merge session info: {e}")
+        else:
+            logger.debug("No valid session info found, using enhanced defaults")
+        
+        # Enhance defaults with telemetry data if available
+        try:
+            player_car_class = self.safe_get_telemetry('PlayerCarClass')
+            if player_car_class is not None:
+                # Update car info based on telemetry
+                drivers = basic_session_info['DriverInfo']['Drivers']
+                if drivers and len(drivers) > 0:
+                    if drivers[0]['CarScreenName'] == 'GT3 Car':
+                        # Enhance with class-specific names
+                        class_names = {
+                            0: 'GT3 Class Car',
+                            1: 'GTE Class Car', 
+                            2: 'LMP2 Class Car',
+                            3: 'LMP1 Class Car',
+                            4: 'Formula Class Car'
+                        }
+                        drivers[0]['CarScreenName'] = class_names.get(player_car_class, f'Class {player_car_class} Car')
+                        drivers[0]['CarClassShortName'] = f'Class {player_car_class}'
+                        
+        except Exception as e:
+            logger.debug(f"Could not enhance session info with telemetry: {e}")
+        
+        logger.info(f"🔍 SESSION DEBUG - FINAL basic_session_info object:")
+        logger.info(f"🔍 SESSION DEBUG - {json.dumps(basic_session_info, indent=2, default=str)}")
+        
+        return basic_session_info
     
     def safe_get_telemetry(self, key: str):
         """Safely get telemetry value"""
@@ -603,49 +735,65 @@ class GT3TelemetryServer:
                         car_name = car_screen_name_short
                         logger.info(f"✅ Car name from telemetry (short): {car_name}")
                 
-                # Try to get track name from telemetry
-                track_display_name = self.safe_get_telemetry('TrackDisplayName')
-                track_config_name = self.safe_get_telemetry('TrackConfigName')
-                if track_display_name:
-                    track_name = track_display_name
-                    if track_config_name:
-                        track_name += f" - {track_config_name}"
-                    logger.info(f"✅ Track name from telemetry: {track_name}")
+                # PRIORITIZE WeekendInfo data for track name (most reliable source)
+                weekend_info_track_name = None
+                if self.last_session_info:
+                    try:
+                        weekend_info = self.last_session_info.get('WeekendInfo', {})
+                        track_display_name = weekend_info.get('TrackDisplayName', '')
+                        track_config_name = weekend_info.get('TrackConfigName', '')
+                        
+                        logger.info(f"🔍 TELEMETRY DEBUG - WeekendInfo ALL KEY-VALUE PAIRS:")
+                        for key, value in weekend_info.items():
+                            logger.info(f"🔍 TELEMETRY DEBUG -   {key}: '{value}'")
+                        logger.info(f"🔍 TELEMETRY DEBUG - TrackDisplayName: '{track_display_name}', TrackConfigName: '{track_config_name}'")
+                        
+                        if track_display_name and track_display_name not in ['iRacing Track']:
+                            weekend_info_track_name = track_display_name
+                            if track_config_name and track_config_name.strip():
+                                weekend_info_track_name += f" - {track_config_name}"
+                            logger.info(f"✅ Track name from WeekendInfo (PRIMARY): {weekend_info_track_name}")
+                        else:
+                            logger.info(f"❌ WeekendInfo track name rejected or empty: '{track_display_name}'")
+                    except Exception as e:
+                        logger.warning(f"Could not extract track from WeekendInfo: {e}")
                 else:
-                    # Try alternative track name fields
-                    track_name_short = self.safe_get_telemetry('TrackDisplayNameShort')
-                    if track_name_short:
-                        track_name = track_name_short
-                        logger.info(f"✅ Track name from telemetry (short): {track_name}")
+                    logger.info("❌ No session info available for WeekendInfo extraction")
+                
+                # Use WeekendInfo track name if available, otherwise try telemetry
+                if weekend_info_track_name:
+                    track_name = weekend_info_track_name
+                else:
+                    # Fallback to telemetry track fields
+                    track_display_name = self.safe_get_telemetry('TrackDisplayName')
+                    track_config_name = self.safe_get_telemetry('TrackConfigName')
+                    if track_display_name:
+                        track_name = track_display_name
+                        if track_config_name:
+                            track_name += f" - {track_config_name}"
+                        logger.info(f"✅ Track name from telemetry (FALLBACK): {track_name}")
+                    else:
+                        # Try alternative track name fields
+                        track_name_short = self.safe_get_telemetry('TrackDisplayNameShort')
+                        if track_name_short:
+                            track_name = track_name_short
+                            logger.info(f"✅ Track name from telemetry short (FALLBACK): {track_name}")
                         
             except Exception as e:
                 logger.debug(f"Could not get car/track from telemetry: {e}")
             
-            # Fallback to session info if telemetry didn't provide car/track info
-            if (car_name == "Unknown Car" or track_name == "Unknown Track") and self.last_session_info:
+            # Also extract car info from session info if needed
+            if car_name == "Unknown Car" and self.last_session_info:
                 try:
-                    # Extract car name from session info
-                    if car_name == "Unknown Car":
-                        driver_info = self.last_session_info.get('DriverInfo', {})
-                        drivers = driver_info.get('Drivers', [])
-                        if drivers and len(drivers) > 0:
-                            session_car_name = drivers[0].get('CarScreenName', '')
-                            if session_car_name and session_car_name != 'GT3 Car':
-                                car_name = session_car_name
-                                logger.debug(f"Car name from session info: {car_name}")
-                    
-                    # Extract track name from session info
-                    if track_name == "Unknown Track":
-                        weekend_info = self.last_session_info.get('WeekendInfo', {})
-                        track_display_name = weekend_info.get('TrackDisplayName', '')
-                        track_config_name = weekend_info.get('TrackConfigName', '')
-                        if track_display_name and track_display_name != 'iRacing Track':
-                            track_name = f"{track_display_name}"
-                            if track_config_name:
-                                track_name += f" - {track_config_name}"
-                            logger.debug(f"Track name from session info: {track_name}")
+                    driver_info = self.last_session_info.get('DriverInfo', {})
+                    drivers = driver_info.get('Drivers', [])
+                    if drivers and len(drivers) > 0:
+                        session_car_name = drivers[0].get('CarScreenName', '')
+                        if session_car_name and session_car_name != 'GT3 Car':
+                            car_name = session_car_name
+                            logger.info(f"✅ Car name from session info: {car_name}")
                 except Exception as e:
-                    logger.debug(f"Could not extract car/track info from session: {e}")
+                    logger.debug(f"Could not extract car info from session: {e}")
             
             # Enhanced fallback system using telemetry data patterns
             if car_name == "Unknown Car":
@@ -685,32 +833,61 @@ class GT3TelemetryServer:
                 except Exception as e:
                     logger.debug(f"Could not determine car from class: {e}")
             
-            # Enhanced track fallback using track characteristics
+            # Enhanced track fallback - only use actual iRacing track data
             if track_name == "Unknown Track":
                 try:
-                    track_temp = self.safe_get_telemetry('TrackTemp')
-                    track_surface = self.safe_get_telemetry('PlayerTrackSurface')
-                    track_wetness = self.safe_get_telemetry('TrackWetness')
+                    # Try to get track info directly from iRacing telemetry fields
+                    track_display_name_direct = self.safe_get_telemetry('TrackDisplayName')
+                    track_config_name_direct = self.safe_get_telemetry('TrackConfigName')
                     
-                    if track_temp is not None:
-                        if track_temp > 40:
-                            track_name = "Road Course (Hot Climate)"
-                        elif track_temp < 15:
-                            track_name = "Road Course (Cold Climate)"
+                    if track_display_name_direct:
+                        track_name = track_display_name_direct
+                        if track_config_name_direct:
+                            track_name += f" - {track_config_name_direct}"
+                        logger.info(f"🏁 Track name from direct telemetry: {track_name}")
+                    else:
+                        # Last resort: check if we have any identifying track characteristics
+                        track_length = self.safe_get_telemetry('TrackLength')
+                        if track_length:
+                            track_name = f"Track ({track_length:.2f}km)"
+                            logger.info(f"🏁 Track identified by length: {track_name}")
                         else:
-                            track_name = "Road Course"
+                            track_name = "iRacing Track"
+                            logger.debug("Using generic track fallback")
                         
-                        if track_wetness and track_wetness == 2:
-                            track_name += " (Wet)"
-                        elif track_wetness and track_wetness == 3:
-                            track_name += " (Very Wet)"
-                        
-                        logger.info(f"🌍 Track estimation based on conditions: {track_name}")
                 except Exception as e:
-                    logger.debug(f"Could not estimate track: {e}")
+                    logger.debug(f"Could not determine track: {e}")
+                    track_name = "iRacing Track"
             
             telemetry['carName'] = car_name
             telemetry['trackName'] = track_name
+            
+            # Also include detailed track info for coaching server
+            if self.last_session_info:
+                try:
+                    weekend_info = self.last_session_info.get('WeekendInfo', {})
+                    telemetry['trackDisplayName'] = weekend_info.get('TrackDisplayName', track_name)
+                    telemetry['trackConfigName'] = weekend_info.get('TrackConfigName', '')
+                    telemetry['trackCity'] = weekend_info.get('TrackCity', '')
+                    telemetry['trackCountry'] = weekend_info.get('TrackCountry', '')
+                    
+                    # Also include driver/car info from session
+                    driver_info = self.last_session_info.get('DriverInfo', {})
+                    drivers = driver_info.get('Drivers', [])
+                    if drivers and len(drivers) > 0:
+                        telemetry['driverCarName'] = drivers[0].get('CarScreenName', car_name)
+                        telemetry['carPath'] = drivers[0].get('CarPath', '')
+                        
+                    logger.debug(f"Added session info to telemetry: {telemetry['trackDisplayName']}")
+                except Exception as e:
+                    logger.debug(f"Could not add session info to telemetry: {e}")
+                    # Fallback values
+                    telemetry['trackDisplayName'] = track_name
+                    telemetry['driverCarName'] = car_name
+            else:
+                # Fallback values when no session info available
+                telemetry['trackDisplayName'] = track_name
+                telemetry['driverCarName'] = car_name
             
             # Send telemetry to coaching server for AI processing
             await self.send_to_coaching_server(telemetry)
@@ -757,6 +934,8 @@ class GT3TelemetryServer:
     async def telemetry_loop(self):
         """Main telemetry collection and broadcasting loop"""
         last_telemetry_time = 0
+        last_session_info_time = 0
+        session_info_update_interval = 5.0  # Update session info every 5 seconds
         
         while True:
             try:
@@ -777,9 +956,46 @@ class GT3TelemetryServer:
                     logger.info("✅ Connected to iRacing!")
                     self.is_connected_to_iracing = True
                 
-                # Get telemetry and session info
+                # Get session info periodically (every 5 seconds) to get fresh WeekendInfo
+                current_time = time.time()
+                if current_time - last_session_info_time >= session_info_update_interval:
+                    session_info = self.get_session_info()
+                    if session_info:
+                        self.last_session_info = session_info
+                        
+                        # Print the ENTIRE last_session_info object for debugging
+                        logger.info(f"🔍 SESSION DEBUG - COMPLETE last_session_info object:")
+                        logger.info(f"🔍 SESSION DEBUG - {json.dumps(self.last_session_info, indent=2, default=str)}")
+                        
+                        # Check if we're in a real session with actual track data
+                        weekend_info = session_info.get('WeekendInfo', {})
+                        track_name = weekend_info.get('TrackDisplayName', '')
+                        track_config = weekend_info.get('TrackConfigName', '')
+                        
+                        logger.info(f"🔍 SESSION DEBUG - WeekendInfo ALL KEY-VALUE PAIRS:")
+                        for key, value in weekend_info.items():
+                            logger.info(f"🔍 SESSION DEBUG -   {key}: '{value}'")
+                        
+                        # Determine session status
+                        if track_name and track_name not in ['iRacing Track', '']:
+                            full_track_name = track_name
+                            if track_config and track_config.strip():
+                                full_track_name += f" - {track_config}"
+                            logger.info(f"🏁 ✅ REAL TRACK SESSION: {full_track_name}")
+                            logger.info(f"🎯 Track data available - coaching can provide track-specific advice")
+                        elif track_name == 'iRacing Track':
+                            logger.info(f"⚠️  PLACEHOLDER SESSION: Connected to iRacing but not in a real session")
+                            logger.info(f"💡 To get real track names: Join a practice session, test drive, or race")
+                            logger.info(f"🔧 Current data is generic placeholder - track-specific coaching limited")
+                        else:
+                            logger.info(f"❌ NO TRACK DATA: No session info available")
+                        
+                        logger.debug(f"🔄 Updated session info")
+                    else:
+                        logger.warning(f"❌ No session info returned from get_session_info()")
+                    last_session_info_time = current_time
+                    
                 telemetry = await self.get_telemetry_data()
-                session_info = self.get_session_info()
                 
                 if telemetry:
                     # Add connection status to telemetry data

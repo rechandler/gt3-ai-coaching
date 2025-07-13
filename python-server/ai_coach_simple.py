@@ -1034,7 +1034,7 @@ class LocalAICoach:
     
     # LLM Coaching Methods
     def _generate_llm_coaching(self, telemetry: Dict[str, float]) -> List[CoachingMessage]:
-        """Generate natural language coaching using LLM"""
+        """Generate natural language coaching using LLM with track-specific context"""
         if not self.llm_enabled or not self.llm_api_key or self.llm_api_key == "your-openai-api-key-here":
             return []
         
@@ -1052,27 +1052,30 @@ class LocalAICoach:
             speed = telemetry.get('Speed', 0)
             logger.info(f"🔍 Telemetry check: Speed={speed:.1f}, Brake={telemetry.get('Brake', 0):.2f}, Throttle={telemetry.get('Throttle', 0):.2f}, Steering={telemetry.get('SteeringWheelAngle', 0):.2f}")
         
-        # Detect coaching situation
-        coaching_context = self._detect_coaching_moments(telemetry)
-        if not coaching_context:
+        # Detect coaching situation with generic sections
+        coaching_moment = self._detect_coaching_moments(telemetry)
+        if not coaching_moment:
             return []
         
-        # Log current telemetry for debugging
+        # Get enhanced track-specific context combining track name + sections
+        enhanced_context = self._get_track_specific_context(telemetry, coaching_moment)
+        
+        # Log current context for debugging
         speed = telemetry.get('Speed', 0)
-        logger.info(f"🤖 LLM coaching triggered for: {coaching_context}")
+        logger.info(f"🎯 LLM coaching triggered for: {enhanced_context}")
         logger.info(f"   📊 Telemetry: Speed={speed:.1f}, Brake={telemetry.get('Brake', 0):.2f}, Throttle={telemetry.get('Throttle', 0):.2f}, Steering={telemetry.get('SteeringWheelAngle', 0):.2f}")
         
-        # Generate LLM message
-        llm_message = self._call_openai_llm(coaching_context, telemetry)
+        # Generate LLM message with enhanced track-specific context
+        llm_message = self._call_openai_llm(enhanced_context, telemetry)
         if llm_message:
             self.last_llm_message = current_time
-            logger.info(f"🤖 Generated LLM message: '{llm_message}'")
+            logger.info(f"🤖 Generated track-specific LLM message: '{llm_message}'")
             return [CoachingMessage(
                 message=llm_message,
                 category="llm",
                 priority=5,
                 confidence=80.0,
-                data_source="LLM_contextual_analysis",
+                data_source="LLM_track_specific_analysis",
                 improvement_potential=0.1
             )]
         
@@ -1135,26 +1138,41 @@ class LocalAICoach:
         return self.track_sections.get(section_key, "Unknown Section")
     
     def _call_openai_llm(self, coaching_context: str, telemetry: Dict[str, float]) -> str:
-        """Call OpenAI LLM to generate coaching message"""
+        """Call OpenAI LLM to generate coaching message with track-specific context"""
         try:
             current_section = self._get_track_section(telemetry.get('LapDistPct', 0))
             speed = telemetry.get('Speed', 0) * 2.237  # Convert to MPH
             throttle = telemetry.get('Throttle', 0) * 100
             brake = telemetry.get('Brake', 0) * 100
             
-            prompt = f"""You are an expert racing coach for GT3 cars. Based on the telemetry data, give ONE brief, specific coaching tip in a natural conversational tone.
+            # Get dynamic track information from telemetry
+            track_name = telemetry.get('trackDisplayName', self.track_name or 'Unknown Track')
+            track_config = telemetry.get('trackConfigName', '')
+            car_name = telemetry.get('driverCarName', self.car_name or 'GT3 Car')
+            
+            # Build full track context
+            full_track_name = track_name
+            if track_config and track_config.strip():
+                full_track_name += f" - {track_config}"
+            
+            # Create track-specific coaching prompt
+            prompt = f"""You are an expert racing coach for GT3 cars. Based on the telemetry data, give ONE brief, specific coaching tip for {full_track_name}.
 
+Car: {car_name}
+Track: {full_track_name}
 Current situation: {coaching_context}
 Track section: {current_section}
 Speed: {speed:.0f} mph
 Throttle: {throttle:.0f}%
 Brake: {brake:.0f}%
 
+Use your knowledge of {track_name} to give track-specific advice. Consider the unique characteristics of this track layout, elevation changes, corner sequences, and optimal racing lines.
+
 Respond with just the coaching message, like:
-- "Brake earlier going into Turn 1"
-- "You're accelerating too hard coming out of that corner"
-- "Ease off the throttle through the chicane"
-- "Try a later braking point there"
+- "Brake earlier for Fuji's T1 hairpin"
+- "Carry more speed through Silverstone's Maggotts"
+- "Use all the kerb at Spa's Eau Rouge"
+- "Watch the elevation change at COTA T1"
 
 Keep it under 60 characters and speak directly to the driver."""
 
@@ -1208,3 +1226,43 @@ Keep it under 60 characters and speak directly to the driver."""
         except Exception as e:
             logger.error(f"LLM coaching error: {e}")
             return None
+    
+    def _get_track_specific_context(self, telemetry: Dict[str, float], coaching_moment: str) -> str:
+        """Enhanced coaching context that combines track name with section analysis"""
+        # Get dynamic track information
+        track_name = telemetry.get('trackDisplayName', self.track_name or 'Unknown Track')
+        track_config = telemetry.get('trackConfigName', '')
+        car_name = telemetry.get('driverCarName', self.car_name or 'GT3 Car')
+        
+        # Get generic section from lap position
+        current_section = self._get_track_section(telemetry.get('LapDistPct', 0))
+        lap_pct = telemetry.get('LapDistPct', 0)
+        
+        # Build full track context
+        full_track_name = track_name
+        if track_config and track_config.strip():
+            full_track_name += f" - {track_config}"
+        
+        # Create enhanced context combining specific track + generic section + coaching moment
+        context_parts = []
+        
+        # Add track-specific context
+        if track_name and track_name not in ['Unknown Track', 'iRacing Track']:
+            context_parts.append(f"at {full_track_name}")
+        
+        # Add section context with lap position
+        if current_section and current_section != 'Unknown Section':
+            section_pct = f"({lap_pct:.1%} through lap)"
+            context_parts.append(f"in {current_section} {section_pct}")
+        
+        # Add coaching moment context
+        if coaching_moment:
+            # Clean up the coaching moment for better readability
+            moment_clean = coaching_moment.replace('_', ' ').replace('at ', '').replace('into ', '')
+            context_parts.append(f"experiencing {moment_clean}")
+        
+        # Combine all context parts
+        if context_parts:
+            return " - ".join(context_parts)
+        else:
+            return f"driving {car_name} around the track"

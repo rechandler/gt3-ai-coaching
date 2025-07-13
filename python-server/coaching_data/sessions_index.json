@@ -1,32 +1,14 @@
 {
   "sessions": [
     {
-      "session_id": "Road Course (Hot Climate)_BMW M4 GT3 (estimated)_1752380370",
-      "track_name": "Road Course (Hot Climate)",
-      "car_name": "BMW M4 GT3 (estimated)",
-      "start_time": 1752380370.1247184,
-      "end_time": null,
-      "best_lap_time": null,
-      "baseline_established": false
-    },
-    {
-      "session_id": "Road Course (Hot Climate)_BMW M4 GT3 (estimated)_1752380915",
-      "track_name": "Road Course (Hot Climate)",
-      "car_name": "BMW M4 GT3 (estimated)",
-      "start_time": 1752380915.669966,
-      "end_time": null,
-      "best_lap_time": null,
-      "baseline_established": false
-    },
-    {
-      "session_id": "Road Course (Hot Climate)_BMW M4 GT3 (estimated)_1752380965",
-      "track_name": "Road Course (Hot Climate)",
-      "car_name": "BMW M4 GT3 (estimated)",
-      "start_time": 1752380965.750176,
+      "session_id": "Fuji Speedway - Grand Prix_Class 2708 Car_1752421653",
+      "track_name": "Fuji Speedway - Grand Prix",
+      "car_name": "Class 2708 Car",
+      "start_time": 1752421653.8079345,
       "end_time": null,
       "best_lap_time": null,
       "baseline_established": false
     }
   ],
-  "last_updated": 1752380965.7508507
+  "last_updated": 1752421653.808649
 }

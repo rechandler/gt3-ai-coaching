@@ -1,0 +1,22 @@
+{
+  "session_id": "Fuji Speedway - Grand Prix_Class 2708 Car_1752421653",
+  "track_name": "Fuji Speedway - Grand Prix",
+  "car_name": "Class 2708 Car",
+  "start_time": 1752421653.8079345,
+  "end_time": null,
+  "laps": [],
+  "best_lap_time": null,
+  "best_lap_number": null,
+  "baseline_established": false,
+  "driving_style": "unknown",
+  "coaching_intensity": 1.0,
+  "consistency_threshold": 0.05,
+  "corner_analysis": {},
+  "brake_point_history": {},
+  "speed_history": {},
+  "track_learning": {},
+  "optimal_shift_rpm_ranges": {},
+  "gear_shift_history": [],
+  "total_distance": 0.0,
+  "total_incidents": 0
+}

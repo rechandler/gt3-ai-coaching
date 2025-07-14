@@ -1,0 +1,21 @@
+# GT3 AI Coaching - Telemetry Server Dependencies
+
+# Core dependencies
+websockets>=12.0
+asyncio-python>=0.1.0
+
+# iRacing SDK (optional - will use mock if not available)
+# irsdk>=1.0.0
+
+# YAML parsing (optional - for session info parsing)
+PyYAML>=6.0
+
+# Additional utilities
+dataclasses>=0.6  # For Python < 3.7 compatibility
+
+# Coaching Agent Dependencies (when coaching-agent is available)
+numpy>=1.21.0
+aiohttp>=3.8.0
+scikit-learn>=1.0.0
+pandas>=1.3.0
+requests>=2.31.0

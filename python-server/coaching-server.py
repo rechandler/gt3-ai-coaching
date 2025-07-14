@@ -23,8 +23,9 @@ if sys.platform == 'win32':
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
-# Import the simplified AI coach
+# Import the simplified AI coach and session persistence
 from ai_coach_simple import LocalAICoach
+from session_persistence import SessionPersistenceManager
 
 # Configure logging
 logging.basicConfig(
@@ -47,6 +48,12 @@ class CoachingServer:
             cloud_sync_enabled=False  # Can be enabled later
         )
         
+        # Initialize session persistence
+        self.session_persistence = SessionPersistenceManager(
+            data_dir="coaching_data",
+            cloud_sync_enabled=False
+        )
+        
         # Message queue and history
         self.message_queue = []
         self.last_message_id = 0
@@ -57,6 +64,9 @@ class CoachingServer:
         
         # Session state
         self.current_session_active = False
+        self.last_message_time = 0.0  # Add missing last_message_time
+        self.session_start_announced = False  # Track if we've announced session start
+        self.last_session_check_time = 0.0  # Limit session change checks
         
         logger.info("🧠 GT3 AI Coaching Server initialized with session persistence")
     
@@ -179,172 +189,68 @@ class CoachingServer:
             await self.unregister_client(websocket)
     
     async def ai_processing_loop(self):
-        """Main AI processing loop - processes telemetry and generates coaching"""
-        last_coaching_message = None
-        last_message_time = 0
-        min_message_interval = 3.0  # Minimum 3 seconds between messages
-        last_session_info_time = 0
-        session_info_interval = 10.0  # Send session info every 10 seconds
+        """Main AI processing loop - now handles telemetry via WebSocket server"""
+        logger.info("🤖 AI processing loop started - waiting for telemetry connections")
         
-        # Connect to telemetry server to receive data
-        telemetry_ws = None
-        
-        logger.info("🤖 AI processing loop started with simplified coach")
-        
+        # Just keep the loop alive - actual processing happens in handle_telemetry_connection
         while True:
-            try:
-                # Connect to telemetry server if not connected
-                if telemetry_ws is None:
-                    try:
-                        import websockets
-                        telemetry_ws = await websockets.connect("ws://localhost:8081")
-                        logger.info("📊 Connected to telemetry server")
-                    except Exception as e:
-                        logger.debug(f"Could not connect to telemetry server: {e}")
-                        await asyncio.sleep(5)
-                        continue
-                
-                # Try to receive telemetry data
-                try:
-                    # Set a timeout for receiving data
-                    message = await asyncio.wait_for(telemetry_ws.recv(), timeout=5.0)
-                    
-                    try:
-                        data = json.loads(message)
-                        
-                        if data.get('type') == 'Telemetry' and data.get('data'):
-                            telemetry_data = data['data']
-                            
-                            # Auto-start session if not active
-                            if not self.current_session_active:
-                                await self._try_start_session(telemetry_data)
-                            
-                            # Send periodic session info updates (every 10 seconds)
-                            # Always send session info if we have valid track/car data, regardless of session status
-                            current_time = time.time()
-                            track_display_name = telemetry_data.get('trackDisplayName', 'Unknown Track')
-                            track_name = telemetry_data.get('trackName', track_display_name)
-                            car_name = telemetry_data.get('driverCarName', telemetry_data.get('carName', 'Unknown Car'))
-                            
-                            if (current_time - last_session_info_time >= session_info_interval and
-                                track_name not in ['Unknown Track', 'iRacing Track'] and
-                                car_name != 'Unknown Car'):
-                                
-                                # Use current track/car data if session not active, otherwise use ai_coach data
-                                if self.current_session_active:
-                                    display_track = self.ai_coach.track_name
-                                    display_car = self.ai_coach.car_name
-                                    baseline_established = self.ai_coach.baseline_established
-                                else:
-                                    display_track = track_name
-                                    display_car = car_name
-                                    baseline_established = False
-                                
-                                session_info_only = {
-                                    "session_info": {
-                                        "track_name": display_track,
-                                        "car_name": display_car,
-                                        "session_active": self.current_session_active,
-                                        "baseline_established": baseline_established
-                                    }
-                                }
-                                
-                                logger.debug(f"📊 Broadcasting session info: {display_track} (active: {self.current_session_active})")
-                                await self.broadcast_message(session_info_only, "session_info")
-                                last_session_info_time = current_time
-                            
-                            # Check if we should process coaching
-                            should_coach = self.should_generate_coaching(telemetry_data)
-                            
-                            if should_coach and self.current_session_active:
-                                # Process telemetry through AI coach
-                                coaching_messages = self.ai_coach.process_telemetry(telemetry_data)
-                                
-                                if coaching_messages:
-                                    primary_message = coaching_messages[0]
-                                    current_time = time.time()
-                                    
-                                    # Only send if message has changed AND enough time has passed
-                                    if (primary_message.message != last_coaching_message and 
-                                        current_time - last_message_time >= min_message_interval):
-                                        
-                                        # Prepare coaching data with session info
-                                        coaching_data = {
-                                            "message": primary_message.message,
-                                            "category": primary_message.category,
-                                            "priority": primary_message.priority,
-                                            "confidence": int(primary_message.confidence),
-                                            # Include reliable session data
-                                            "session_info": {
-                                                "track_name": self.ai_coach.track_name,
-                                                "car_name": self.ai_coach.car_name,
-                                                "session_active": True,
-                                                "baseline_established": self.ai_coach.baseline_established
-                                            }
-                                        }
-                                        
-                                        logger.debug(f"📊 Sending session info: {self.ai_coach.track_name} + {self.ai_coach.car_name}")
-                                        
-                                        # Add secondary messages if any
-                                        if len(coaching_messages) > 1:
-                                            coaching_data["secondary_messages"] = [
-                                                {
-                                                    "message": msg.message,
-                                                    "category": msg.category,
-                                                    "priority": msg.priority,
-                                                    "confidence": int(msg.confidence)
-                                                }
-                                                for msg in coaching_messages[1:3]  # Max 2 secondary
-                                            ]
-                                        
-                                        # Broadcast the coaching message
-                                        await self.broadcast_message(coaching_data)
-                                        last_coaching_message = primary_message.message
-                                        last_message_time = current_time
-                            else:
-                                # Reset last message when not coaching
-                                if last_coaching_message is not None:
-                                    logger.debug("🛑 Car not in racing condition, stopping coaching")
-                                    last_coaching_message = None
-                    
-                    except json.JSONDecodeError:
-                        logger.debug("Received non-JSON data from telemetry server")
-                    
-                except asyncio.TimeoutError:
-                    pass
-                except websockets.exceptions.ConnectionClosed:
-                    logger.info("📊 Telemetry server connection closed")
-                    telemetry_ws = None
-                    await asyncio.sleep(2)
-                except Exception as recv_error:
-                    logger.debug(f"Error receiving from telemetry server: {recv_error}")
-                    telemetry_ws = None
-                    await asyncio.sleep(2)
-                
-            except Exception as e:
-                logger.error(f"Error in AI processing loop: {e}")
-                telemetry_ws = None
-                await asyncio.sleep(1)
+            await asyncio.sleep(10)  # Keep loop alive
+        
+    def reset_session_state(self):
+        """Reset session state when session changes"""
+        self.current_session_active = False
+        self.session_start_announced = False
+        self.session_persistence.current_session_id = None
+        self.last_session_check_time = 0.0
+        logger.info("🔄 Session state reset")
     
+    def detect_session_change(self, telemetry_data):
+        """Detect if we've changed sessions and need to reset"""
+        try:
+            current_track = telemetry_data.get('trackName', 'Unknown Track')
+            current_car = telemetry_data.get('carName', 'Unknown Car')
+            
+            # If we have an active session, check if track/car changed
+            if hasattr(self.ai_coach, 'track_name') and hasattr(self.ai_coach, 'car_name'):
+                # Only trigger session change if we're moving from one known session to another
+                if (self.ai_coach.track_name != "unknown" and self.ai_coach.car_name != "unknown" and
+                    (current_track != self.ai_coach.track_name or current_car != self.ai_coach.car_name)):
+                    logger.info(f"🔄 Session change detected: {self.ai_coach.track_name}/{self.ai_coach.car_name} → {current_track}/{current_car}")
+                    self.reset_session_state()
+                    return True
+            
+            return False
+        except Exception as e:
+            logger.error(f"Error detecting session change: {e}")
+            return False
+
     async def _try_start_session(self, telemetry_data):
         """Try to auto-start a session based on telemetry data"""
         try:
+            # Check if session is already active or announced
+            if self.session_persistence.current_session_id and self.session_start_announced:
+                return  # Session already started and announced
+            
             # Extract track and car info - prioritize WeekendInfo data
-            track_display_name = telemetry_data.get('trackDisplayName', 'Unknown Track')
-            track_name = telemetry_data.get('trackName', track_display_name)
-            car_name = telemetry_data.get('driverCarName', telemetry_data.get('carName', 'Unknown Car'))
+            track_display_name = telemetry_data.get('TrackDisplayName', 'Unknown Track')  # Capital T for iRacing
+            track_name = telemetry_data.get('TrackName', track_display_name)  # Capital T for iRacing
+            car_name = telemetry_data.get('CarScreenName', telemetry_data.get('CarName', 'Unknown Car'))  # Capital C for iRacing
             
             # Log what we got
             logger.debug(f"Session info from telemetry: track='{track_name}', car='{car_name}'")
             
             # Only start if we have valid data and car is moving
-            speed = telemetry_data.get('speed', 0)
+            speed = telemetry_data.get('Speed', 0)  # Capital S for iRacing field
             if speed > 5 and track_name not in ['Unknown Track', 'iRacing Track']:
-                success = self.ai_coach.start_session(track_name, car_name, load_previous=True)
-                if success:
-                    self.current_session_active = True
-                    logger.info(f"🏁 Auto-started session: {track_name} + {car_name}")
-                    
+                # Check if we already have this session running
+                if not self.session_persistence.current_session_id:
+                    success = self.ai_coach.start_session(track_name, car_name, load_previous=True)
+                    if success:
+                        self.current_session_active = True
+                        logger.info(f"🏁 Auto-started session: {track_name} + {car_name}")
+                
+                # Only announce session start once per session
+                if not self.session_start_announced:
                     # Send session start notification with reliable session info
                     session_data = {
                         "message": f"📊 Session started: {track_name}",
@@ -359,8 +265,9 @@ class CoachingServer:
                         }
                     }
                     
-                    logger.info(f"📊 Sending session start with info: {self.ai_coach.track_name} + {self.ai_coach.car_name}")
+                    logger.info(f"📊 Sending session start notification: {self.ai_coach.track_name} + {self.ai_coach.car_name}")
                     await self.broadcast_message(session_data)
+                    self.session_start_announced = True  # Mark as announced
         
         except Exception as e:
             logger.error(f"Failed to auto-start session: {e}")
@@ -377,13 +284,13 @@ class CoachingServer:
             return False
         
         # Don't coach if car is stationary (speed very low)
-        speed = telemetry_data.get('speed', 0)
+        speed = telemetry_data.get('Speed', 0)  # Capital S for iRacing field
         if speed < 5:  # Less than 5 MPH
             logger.debug(f"❌ Speed too low ({speed:.1f} MPH) - not coaching")
             return False
         
         # Don't coach during caution/yellow flag conditions
-        session_flags = telemetry_data.get('sessionFlags', 0)
+        session_flags = telemetry_data.get('SessionFlags', 0)  # Capital S for iRacing field
         # Check for yellow flag conditions (caution)
         # iRacing session flags: yellow = 0x00100000 (bit 20)
         if session_flags & 0x00100000:  # Yellow flag
@@ -400,14 +307,14 @@ class CoachingServer:
             return False
         
         # Don't coach if session is not active (practice, qualifying, race)
-        session_state = telemetry_data.get('sessionState', 0)
+        session_state = telemetry_data.get('SessionState', 0)  # Capital S for iRacing field
         # SessionState: 0=invalid, 1=get_in_car, 2=warmup, 3=parade_laps, 4=racing, 5=checkered, 6=cool_down
         if session_state not in [2, 3, 4]:  # Only coach during warmup, parade laps, or racing
             logger.debug(f"❌ Invalid session state ({session_state}) - not coaching (need 2/3/4)")
             return False
         
         # Allow coaching on all track surfaces except not_in_world - we want to give feedback about off-track excursions!
-        track_surface = telemetry_data.get('playerTrackSurface', 0)
+        track_surface = telemetry_data.get('PlayerTrackSurface', 0)  # Capital P for iRacing field
         # TrackSurface: 0=not_in_world, 1=off_track, 2=in_pit_stall, 3=approaching_pits, 4=on_track
         if track_surface == 0:  # Only skip coaching when not in world (car not active)
             logger.debug(f"❌ Car not in world ({track_surface}) - not coaching")
@@ -419,6 +326,90 @@ class CoachingServer:
         
         logger.info(f"✅ All coaching conditions met! Speed: {speed:.1f}, Session: {session_state}, Surface: {surface_name}, Flags: 0x{session_flags:08x}")
         return True
+
+    async def handle_telemetry_connection(self, websocket, path=None):
+        """Handle telemetry server connections"""
+        logger.info("📡 Telemetry server connected")
+        
+        try:
+            # Keep connection alive and process telemetry data
+            async for message in websocket:
+                try:
+                    data = json.loads(message)
+                    
+                    if data.get('type') == 'telemetry_data' and data.get('data'):
+                        telemetry_data = data['data']
+                        
+                        # Cache the telemetry data
+                        self.latest_telemetry = telemetry_data
+                        
+                        # Check for session changes periodically (every 2 seconds)
+                        current_time = time.time()
+                        if current_time - self.last_session_check_time > 2.0:
+                            session_changed = self.detect_session_change(telemetry_data)
+                            self.last_session_check_time = current_time
+                        
+                        # Try to auto-start session if needed
+                        if not self.session_persistence.current_session_id:
+                            await self._try_start_session(telemetry_data)
+                        
+                        # Process for coaching if session active
+                        if self.session_persistence.current_session_id:
+                            track_display_name = telemetry_data.get('TrackDisplayName', 'Unknown Track')  # Capital T for iRacing
+                            track_name = telemetry_data.get('TrackName', track_display_name)  # Capital T for iRacing
+                            car_name = telemetry_data.get('CarScreenName', telemetry_data.get('CarName', 'Unknown Car'))  # Capital C for iRacing
+                            
+                            logger.debug(f"🏁 Processing telemetry: {track_name} - {car_name}")
+                            
+                            # Check if enough time has passed since last message - REDUCED for more responsive coaching
+                            current_time = time.time()
+                            if current_time - self.last_message_time < 1.5:  # 1.5 second cooldown instead of 3
+                                continue
+                            
+                            # Check if we should generate coaching
+                            should_coach = self.should_generate_coaching(telemetry_data)
+                            
+                            if should_coach:
+                                logger.info(f"🎯 ATTEMPTING TO GENERATE COACHING - Speed: {telemetry_data.get('Speed', 0):.1f}, Session: {telemetry_data.get('SessionState', 0)}")
+                                
+                                # Process telemetry through AI coach
+                                coaching_messages = self.ai_coach.process_telemetry(telemetry_data)
+                                
+                                logger.info(f"🤖 AI Coach returned {len(coaching_messages) if coaching_messages else 0} messages")
+                                
+                                if coaching_messages and len(coaching_messages) > 0:
+                                    for msg in coaching_messages:
+                                        # Convert CoachingMessage object to dictionary format
+                                        message_data = {
+                                            "message": msg.message,
+                                            "category": msg.category,
+                                            "priority": msg.priority,
+                                            "confidence": msg.confidence,
+                                            "data_source": msg.data_source,
+                                            "improvement_potential": getattr(msg, 'improvement_potential', 0.0)
+                                        }
+                                        
+                                        await self.broadcast_message(message_data)
+                                        logger.info(f"🤖 Sent coaching: {msg.message[:100]}...")
+                                        
+                                        # Save to persistence
+                                        await self.session_persistence.save_message(
+                                            self.session_persistence.current_session_id,
+                                            msg.message,
+                                            {"track": track_name, "car": car_name, "timestamp": current_time}
+                                        )
+                                    
+                                    self.last_message_time = current_time
+                        
+                except json.JSONDecodeError:
+                    logger.error("Invalid JSON received from telemetry server")
+                except Exception as e:
+                    logger.error(f"Error processing telemetry: {e}")
+                    
+        except websockets.exceptions.ConnectionClosed:
+            logger.info("📡 Telemetry server disconnected")
+        except Exception as e:
+            logger.error(f"Telemetry connection error: {e}")
 
 def main():
     """Main entry point"""
@@ -439,7 +430,7 @@ def main():
             ai_task = asyncio.create_task(coaching_server.ai_processing_loop())
             
             # Coaching WebSocket server for UI clients
-            server = await websockets.serve(
+            coaching_server_task = websockets.serve(
                 coaching_server.handle_coaching_client,
                 "localhost",
                 8082,
@@ -448,8 +439,23 @@ def main():
                 max_size=1048576  # 1MB max message size
             )
             
+            # Telemetry WebSocket server for telemetry server connections
+            telemetry_server_task = websockets.serve(
+                coaching_server.handle_telemetry_connection,
+                "localhost",
+                8083,
+                ping_interval=20,
+                ping_timeout=10,
+                max_size=1048576  # 1MB max message size
+            )
+            
+            # Start both servers
+            coaching_server_ws = await coaching_server_task
+            telemetry_server_ws = await telemetry_server_task
+            
             logger.info("🧠 GT3 AI Coaching Server running on ws://localhost:8082")
-            logger.info("📊 Listening for telemetry data...")
+            logger.info("� Telemetry Server running on ws://localhost:8083")
+            logger.info("�📊 Listening for telemetry data...")
             logger.info("Press Ctrl+C to stop")
             
             # Keep running until interrupted
@@ -459,8 +465,10 @@ def main():
                 logger.info("Server shutdown requested")
             finally:
                 ai_task.cancel()
-                server.close()
-                await server.wait_closed()
+                coaching_server_ws.close()
+                telemetry_server_ws.close()
+                await coaching_server_ws.wait_closed()
+                await telemetry_server_ws.wait_closed()
             
         except Exception as e:
             logger.error(f"Server error: {e}")

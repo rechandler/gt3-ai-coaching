@@ -69,6 +69,9 @@ class SessionPersistenceManager:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
         
+        # Current session tracking
+        self.current_session_id: Optional[str] = None
+        
         # Local persistence
         self.sessions_index_file = self.data_dir / "sessions_index.json"
         self.sessions_cache: Dict[str, SessionData] = {}
@@ -97,6 +100,9 @@ class SessionPersistenceManager:
             car_name=car_name,
             start_time=time.time()
         )
+        
+        # Set as current session
+        self.current_session_id = session_id
         
         # Save immediately
         self.save_session(session)

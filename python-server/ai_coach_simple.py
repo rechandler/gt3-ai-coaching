@@ -158,7 +158,7 @@ class LocalAICoach:
         return success
     
     def process_telemetry(self, telemetry: Dict[str, Any]) -> List[CoachingMessage]:
-        """Process incoming telemetry and generate coaching messages"""
+        """Process incoming telemetry and generate coaching messages - ALL through LLM with comprehensive analysis"""
         try:
             # Add to telemetry buffer
             telemetry['timestamp'] = time.time()
@@ -170,33 +170,40 @@ class LocalAICoach:
             # Generate coaching messages
             messages = []
             
-            # If baseline not established, only show countdown message
+            # Log comprehensive analysis status every 10 seconds
+            current_time = time.time()
+            if not hasattr(self, '_last_analysis_log_time'):
+                self._last_analysis_log_time = 0
+            
+            if current_time - self._last_analysis_log_time > 10.0:
+                speed = telemetry.get('Speed', 0)  # Capital S for iRacing field
+                throttle = telemetry.get('Throttle', 0)  # Capital T for iRacing field  
+                brake = telemetry.get('Brake', 0)  # Capital B for iRacing field
+                steering = telemetry.get('SteeringWheelAngle', 0)  # Correct iRacing field name
+                delta_time = telemetry.get('LapDeltaToSessionBestLap', 0)  # Correct iRacing field name
+                
+                logger.info(f"🔍 COMPREHENSIVE DRIVING ANALYSIS ACTIVE")
+                logger.info(f"📊 Current State: Speed={speed:.1f}mph, Throttle={throttle:.1f}%, Brake={brake:.1f}%, Steering={steering:.1f}°")
+                logger.info(f"⏱️  Performance: Delta={delta_time:.2f}s, Track={telemetry.get('TrackDisplayName', 'Unknown')}")  # Correct iRacing field name
+                logger.info(f"🎯 Analyzing: Braking, Throttle, Steering, Racing Line, Speed Management, Technique, Strategy")
+                self._last_analysis_log_time = current_time
+            
+            # If baseline not established, only show countdown message (non-LLM)
             if not self.baseline_established:
                 countdown_message = self._generate_baseline_countdown(telemetry)
                 if countdown_message:
                     messages.append(countdown_message)
                 return self._prioritize_messages(messages)
             
-            # Generate various coaching messages with progressive focus
-            messages.extend(self._analyze_track_surface(telemetry))
-            messages.extend(self._analyze_brake_usage(telemetry))
-            messages.extend(self._analyze_throttle_application(telemetry))
-            messages.extend(self._analyze_speed_management(telemetry))
-            messages.extend(self._analyze_driving_rhythm(telemetry))
-            messages.extend(self._analyze_sector_performance(telemetry))
-            messages.extend(self._analyze_situational_awareness(telemetry))
+            # *** ALL COACHING MESSAGES NOW GO THROUGH LLM WITH COMPREHENSIVE ANALYSIS ***
+            # Detect ALL possible coaching situations and let LLM handle them
+            coaching_situations = self._detect_all_coaching_situations(telemetry)
             
-            # LLM coaching (if enabled)
-            messages.extend(self._generate_llm_coaching(telemetry))
-            
-            messages.extend(self._generate_progressive_coaching(telemetry))
-            messages.extend(self._generate_general_tips(telemetry))
-            
-            if len(self.laps) >= 2:
-                messages.extend(self._analyze_consistency(telemetry))
-            
-            # LLM Coaching
-            messages.extend(self._generate_llm_coaching(telemetry))
+            for situation in coaching_situations:
+                llm_message = self._generate_llm_coaching_for_situation(telemetry, situation)
+                if llm_message:
+                    messages.append(llm_message)
+                    logger.info(f"✅ Generated coaching for situation: {situation}")
             
             return self._prioritize_messages(messages)
             
@@ -318,7 +325,7 @@ class LocalAICoach:
     
     def _generate_baseline_countdown(self, telemetry: Dict[str, Any]) -> Optional[CoachingMessage]:
         """Generate countdown message showing laps remaining until baseline is established"""
-        speed = telemetry.get('speed', 0)
+        speed = telemetry.get('Speed', 0)  # Capital S for iRacing field
         if speed < 10:
             return None
         
@@ -378,8 +385,8 @@ class LocalAICoach:
         
         current_time = time.time()
         
-        # Heavy braking detection (much lower threshold for more frequent coaching)
-        if brake_pressure > 40 and speed > 40:  # Lowered from 60% brake and 60mph
+        # Heavy braking detection (MUCH lower threshold for more frequent coaching)
+        if brake_pressure > 25 and speed > 20:  # Lowered from 40% brake and 40mph
             if not hasattr(self, '_last_hard_brake') or current_time - self._last_hard_brake > 6:
                 messages.append(CoachingMessage(
                     message="Heavy braking - try progressive braking for smoother cornering",
@@ -389,9 +396,10 @@ class LocalAICoach:
                     data_source="brake_pressure"
                 ))
                 self._last_hard_brake = current_time
+                logger.info(f"🔍 HEAVY BRAKING DETECTED: Brake={brake_pressure:.1f}%, Speed={speed:.1f}")
         
         # Trail braking detection (much lower threshold)
-        if brake_pressure > 10 and throttle > 5:  # Both brake and throttle active
+        if brake_pressure > 5 and throttle > 3:  # Both brake and throttle active
             if not hasattr(self, '_last_trail_brake') or current_time - self._last_trail_brake > 25:  # Longer cooldown
                 if random.random() < 0.05:  # Only 5% chance for positive feedback
                     messages.append(CoachingMessage(
@@ -406,7 +414,7 @@ class LocalAICoach:
         # Sudden brake release (lower threshold)
         if hasattr(self, '_last_brake_pressure'):
             brake_delta = self._last_brake_pressure - brake_pressure
-            if brake_delta > 25 and speed > 30:  # Sudden brake release
+            if brake_delta > 15 and speed > 20:  # Sudden brake release - lowered from 25/30
                 if not hasattr(self, '_last_brake_release') or current_time - self._last_brake_release > 8:
                     messages.append(CoachingMessage(
                         message="Smooth brake release helps maintain car balance through corners",
@@ -416,9 +424,10 @@ class LocalAICoach:
                         data_source="brake_release"
                     ))
                     self._last_brake_release = current_time
+                    logger.info(f"🔍 SUDDEN BRAKE RELEASE: Delta={brake_delta:.1f}%, Speed={speed:.1f}")
         
-        # Brake lockup prevention (new lower threshold)
-        if brake_pressure > 70 and speed > 80:
+        # Brake lockup prevention (lower threshold)
+        if brake_pressure > 50 and speed > 50:  # Lowered from 70% brake and 80mph
             if not hasattr(self, '_last_lockup_warning') or current_time - self._last_lockup_warning > 10:
                 messages.append(CoachingMessage(
                     message="High brake pressure at speed - watch for lockups and find the limit",
@@ -428,6 +437,7 @@ class LocalAICoach:
                     data_source="lockup_prevention"
                 ))
                 self._last_lockup_warning = current_time
+                logger.info(f"🔍 LOCKUP WARNING: Brake={brake_pressure:.1f}%, Speed={speed:.1f}")
         
         self._last_brake_pressure = brake_pressure
         return messages
@@ -441,10 +451,10 @@ class LocalAICoach:
         
         current_time = time.time()
         
-        # Aggressive throttle application (much lower threshold)
+        # Aggressive throttle application (MUCH lower threshold)
         if hasattr(self, '_last_throttle'):
             throttle_delta = throttle - self._last_throttle
-            if throttle_delta > 20 and speed > 20:  # Sudden throttle increase
+            if throttle_delta > 15 and speed > 15:  # Sudden throttle increase - lowered from 20/20
                 if not hasattr(self, '_last_aggressive_throttle') or current_time - self._last_aggressive_throttle > 6:
                     messages.append(CoachingMessage(
                         message="Sudden throttle input - smooth application maintains traction",
@@ -454,9 +464,10 @@ class LocalAICoach:
                         data_source="throttle_application"
                     ))
                     self._last_aggressive_throttle = current_time
+                    logger.info(f"🔍 AGGRESSIVE THROTTLE: Delta={throttle_delta:.1f}%, Speed={speed:.1f}")
         
-        # Full throttle at low speed (much lower threshold for wheel spin)
-        if throttle > 70 and speed < 40 and gear > 1:
+        # Full throttle at low speed (MUCH lower threshold for wheel spin)
+        if throttle > 60 and speed < 35 and gear > 1:  # Lowered from 70% throttle and 40mph
             if not hasattr(self, '_last_wheel_spin') or current_time - self._last_wheel_spin > 6:
                 messages.append(CoachingMessage(
                     message="High throttle at low speed - build up gradually to avoid wheelspin",
@@ -466,6 +477,7 @@ class LocalAICoach:
                     data_source="wheel_spin_risk"
                 ))
                 self._last_wheel_spin = current_time
+                logger.info(f"🔍 WHEEL SPIN RISK: Throttle={throttle:.1f}%, Speed={speed:.1f}")
         
         # Good throttle modulation (much rarer positive feedback)
         if 30 < throttle < 70 and speed > 40:
@@ -589,9 +601,14 @@ class LocalAICoach:
         throttle = telemetry.get('throttle', 0)
         brake = telemetry.get('brake', 0)
         speed = telemetry.get('speed', 0)
-        steering_angle = abs(telemetry.get('steerAngle', 0))  # Get steering input for over/understeer detection
+        # Fix steering field name and add fallback
+        steering_angle = abs(telemetry.get('steering', telemetry.get('steerAngle', 0)))  
         
         current_time = time.time()
+        
+        # Debug log to see actual steering values
+        if steering_angle > 0.1:  # Only log when there's actual steering input
+            logger.debug(f"🎮 Steering input detected: {steering_angle:.2f}°, Speed: {speed:.1f}, Throttle: {throttle:.1f}%, Brake: {brake:.1f}%")
         
         # Frequent input changes (potential overdriving) - much lower threshold
         if hasattr(self, '_last_inputs'):
@@ -617,8 +634,8 @@ class LocalAICoach:
                     self._last_overdriving = current_time
                     self._input_changes = 0
         
-        # Oversteer detection (high steering with throttle application)
-        if steering_angle > 12 and throttle > 50 and speed > 25:
+        # Oversteer detection (MUCH lower threshold)
+        if steering_angle > 5 and throttle > 30 and speed > 15:  # Much more sensitive
             if not hasattr(self, '_last_oversteer') or current_time - self._last_oversteer > 8:
                 messages.append(CoachingMessage(
                     message="High steering angle under throttle - possible oversteer, ease off throttle",
@@ -628,9 +645,10 @@ class LocalAICoach:
                     data_source="oversteer_detection"
                 ))
                 self._last_oversteer = current_time
+                logger.info(f"🔍 OVERSTEER DETECTED: Steering={steering_angle:.2f}°, Throttle={throttle:.1f}%, Speed={speed:.1f}")
         
-        # Understeer detection (excessive steering input)
-        if steering_angle > 25 and speed > 50:
+        # Understeer detection (MUCH lower threshold)
+        if steering_angle > 8 and speed > 25:  # Much more sensitive
             if not hasattr(self, '_last_understeer') or current_time - self._last_understeer > 10:
                 messages.append(CoachingMessage(
                     message="High steering angle - if car isn't turning, reduce speed into corner",
@@ -640,6 +658,7 @@ class LocalAICoach:
                     data_source="understeer_detection"
                 ))
                 self._last_understeer = current_time
+                logger.info(f"🔍 UNDERSTEER DETECTED: Steering={steering_angle:.2f}°, Speed={speed:.1f}")
         
         # Both throttle and brake pressed (lower threshold)
         if throttle > 15 and brake > 15:
@@ -1266,3 +1285,458 @@ Keep it under 60 characters and speak directly to the driver."""
             return " - ".join(context_parts)
         else:
             return f"driving {car_name} around the track"
+    
+    def _detect_all_coaching_situations(self, telemetry: Dict[str, Any]) -> List[str]:
+        """Comprehensive driving analysis - detect ALL problem areas and coaching opportunities"""
+        situations = []
+        current_time = time.time()
+        
+        # Get telemetry values
+        speed = telemetry.get('speed', 0)
+        throttle = telemetry.get('throttle', 0)
+        brake = telemetry.get('brake', 0)
+        steering = telemetry.get('steering', 0)
+        track_surface = telemetry.get('playerTrackSurface', 4)
+        gear = telemetry.get('gear', 1)
+        rpm = telemetry.get('rpm', 0)
+        fuel = telemetry.get('fuelLevel', 100)
+        delta_time = telemetry.get('deltaTime', 0)
+        lap_pct = telemetry.get('lapDistPct', 0)
+        yaw_rate = telemetry.get('yawRate', 0)
+        lat_accel = telemetry.get('latAccel', 0)
+        long_accel = telemetry.get('longAccel', 0)
+        
+        # Only coach if moving meaningfully
+        if speed < 5:
+            return situations
+        
+        # Track the last time each situation was detected to avoid spam
+        if not hasattr(self, '_situation_cooldowns'):
+            self._situation_cooldowns = {}
+        if not hasattr(self, '_telemetry_history'):
+            self._telemetry_history = []
+        
+        # Store telemetry history for analysis (last 5 seconds at 60Hz = 300 samples)
+        self._telemetry_history.append({
+            'time': current_time,
+            'speed': speed,
+            'throttle': throttle,
+            'brake': brake,
+            'steering': steering,
+            'delta_time': delta_time,
+            'lap_pct': lap_pct,
+            'gear': gear,
+            'rpm': rpm
+        })
+        
+        # Keep only last 300 samples (5 seconds)
+        if len(self._telemetry_history) > 300:
+            self._telemetry_history.pop(0)
+        
+        def can_trigger_situation(situation_name: str, cooldown: float = 5.0) -> bool:
+            last_time = self._situation_cooldowns.get(situation_name, 0)
+            return current_time - last_time > cooldown
+        
+        # ===== COMPREHENSIVE DRIVING ANALYSIS =====
+        
+        # 1. BRAKING ANALYSIS - All types of braking issues
+        if brake > 1 and speed > 10:  # Any braking detected
+            if brake > 80 and can_trigger_situation('panic_braking', 8.0):
+                situations.append('panic_braking')
+                self._situation_cooldowns['panic_braking'] = current_time
+                logger.info(f"🚨 ANALYSIS: panic_braking (brake={brake:.1f}%, speed={speed:.1f})")
+            
+            elif brake > 50 and can_trigger_situation('heavy_braking', 6.0):
+                situations.append('heavy_braking')
+                self._situation_cooldowns['heavy_braking'] = current_time
+                logger.info(f"🚨 ANALYSIS: heavy_braking (brake={brake:.1f}%, speed={speed:.1f})")
+            
+            elif brake > 15 and can_trigger_situation('moderate_braking', 5.0):
+                situations.append('moderate_braking')
+                self._situation_cooldowns['moderate_braking'] = current_time
+                logger.info(f"🚨 ANALYSIS: moderate_braking (brake={brake:.1f}%, speed={speed:.1f})")
+        
+        # Analyze braking consistency
+        if len(self._telemetry_history) >= 30:  # 0.5 seconds of data
+            recent_brake = [h['brake'] for h in self._telemetry_history[-30:]]
+            brake_variance = np.var(recent_brake) if len(recent_brake) > 1 else 0
+            if brake_variance > 100 and max(recent_brake) > 10 and can_trigger_situation('inconsistent_braking', 8.0):
+                situations.append('inconsistent_braking')
+                self._situation_cooldowns['inconsistent_braking'] = current_time
+                logger.info(f"🚨 ANALYSIS: inconsistent_braking (variance={brake_variance:.1f})")
+        
+        # 2. THROTTLE ANALYSIS - All throttle control issues
+        if hasattr(self, '_last_throttle'):
+            throttle_delta = abs(throttle - self._last_throttle)
+            
+            # Sudden throttle changes
+            if throttle_delta > 15 and can_trigger_situation('abrupt_throttle', 4.0):
+                situations.append('abrupt_throttle')
+                self._situation_cooldowns['abrupt_throttle'] = current_time
+                logger.info(f"🚨 ANALYSIS: abrupt_throttle (delta={throttle_delta:.1f}%)")
+            
+            # Wheel spin risk
+            if throttle > 30 and speed < 40 and gear > 1 and can_trigger_situation('traction_risk', 5.0):
+                situations.append('traction_risk')
+                self._situation_cooldowns['traction_risk'] = current_time
+                logger.info(f"🚨 ANALYSIS: traction_risk (throttle={throttle:.1f}%, speed={speed:.1f})")
+        
+        # Throttle smoothness analysis
+        if len(self._telemetry_history) >= 60:  # 1 second of data
+            recent_throttle = [h['throttle'] for h in self._telemetry_history[-60:]]
+            throttle_variance = np.var(recent_throttle) if len(recent_throttle) > 1 else 0
+            if throttle_variance > 50 and max(recent_throttle) > 20 and can_trigger_situation('jerky_throttle', 10.0):
+                situations.append('jerky_throttle')
+                self._situation_cooldowns['jerky_throttle'] = current_time
+                logger.info(f"🚨 ANALYSIS: jerky_throttle (variance={throttle_variance:.1f})")
+        
+        # 3. STEERING & HANDLING ANALYSIS - All handling issues
+        steering_magnitude = abs(steering)
+        
+        if steering_magnitude > 1 and speed > 10:  # Any steering input
+            if steering_magnitude > 20 and speed > 30 and can_trigger_situation('excessive_steering', 6.0):
+                situations.append('excessive_steering')
+                self._situation_cooldowns['excessive_steering'] = current_time
+                logger.info(f"🚨 ANALYSIS: excessive_steering (steering={steering:.1f}°, speed={speed:.1f})")
+            
+            elif steering_magnitude > 10 and speed > 50 and can_trigger_situation('high_speed_steering', 8.0):
+                situations.append('high_speed_steering')
+                self._situation_cooldowns['high_speed_steering'] = current_time
+                logger.info(f"🚨 ANALYSIS: high_speed_steering (steering={steering:.1f}°, speed={speed:.1f})")
+        
+        # Steering smoothness analysis
+        if len(self._telemetry_history) >= 30:
+            recent_steering = [h['steering'] for h in self._telemetry_history[-30:]]
+            steering_variance = np.var(recent_steering) if len(recent_steering) > 1 else 0
+            if steering_variance > 25 and max([abs(s) for s in recent_steering]) > 5 and can_trigger_situation('unstable_steering', 8.0):
+                situations.append('unstable_steering')
+                self._situation_cooldowns['unstable_steering'] = current_time
+                logger.info(f"🚨 ANALYSIS: unstable_steering (variance={steering_variance:.1f})")
+        
+        # 4. RACING LINE & TRACK POSITION ANALYSIS
+        if track_surface == 1 and speed > 10 and can_trigger_situation('off_track_excursion', 10.0):
+            situations.append('off_track_excursion')
+            self._situation_cooldowns['off_track_excursion'] = current_time
+            logger.info(f"🚨 ANALYSIS: off_track_excursion (speed={speed:.1f})")
+        
+        # 5. SPEED MANAGEMENT ANALYSIS
+        if len(self._telemetry_history) >= 120:  # 2 seconds of data
+            recent_speeds = [h['speed'] for h in self._telemetry_history[-120:]]
+            speed_variance = np.var(recent_speeds) if len(recent_speeds) > 1 else 0
+            
+            if speed_variance > 100 and max(recent_speeds) > 20 and can_trigger_situation('inconsistent_speed', 12.0):
+                situations.append('inconsistent_speed')
+                self._situation_cooldowns['inconsistent_speed'] = current_time
+                logger.info(f"🚨 ANALYSIS: inconsistent_speed (variance={speed_variance:.1f})")
+        
+        # Corner speed analysis
+        if steering_magnitude > 5:  # In a corner
+            if speed > 80 and can_trigger_situation('corner_too_fast', 10.0):
+                situations.append('corner_too_fast')
+                self._situation_cooldowns['corner_too_fast'] = current_time
+                logger.info(f"🚨 ANALYSIS: corner_too_fast (speed={speed:.1f}, steering={steering:.1f}°)")
+            
+            elif speed < 25 and speed > 10 and can_trigger_situation('corner_too_slow', 15.0):
+                situations.append('corner_too_slow')
+                self._situation_cooldowns['corner_too_slow'] = current_time
+                logger.info(f"🚨 ANALYSIS: corner_too_slow (speed={speed:.1f}, steering={steering:.1f}°)")
+        
+        # 6. GEAR & RPM ANALYSIS
+        if rpm > 0:
+            # High RPM analysis
+            if rpm > 7500 and can_trigger_situation('high_rpm', 8.0):
+                situations.append('high_rpm')
+                self._situation_cooldowns['high_rpm'] = current_time
+                logger.info(f"🚨 ANALYSIS: high_rpm (rpm={rpm:.0f})")
+            
+            # Low RPM in gear analysis
+            if gear > 2 and rpm < 3000 and speed > 20 and can_trigger_situation('low_rpm_high_gear', 10.0):
+                situations.append('low_rpm_high_gear')
+                self._situation_cooldowns['low_rpm_high_gear'] = current_time
+                logger.info(f"🚨 ANALYSIS: low_rpm_high_gear (gear={gear}, rpm={rpm:.0f})")
+        
+        # 7. COMBINED INPUT ANALYSIS - Advanced techniques
+        if brake > 5 and throttle > 5 and can_trigger_situation('overlapping_inputs', 12.0):
+            situations.append('overlapping_inputs')
+            self._situation_cooldowns['overlapping_inputs'] = current_time
+            logger.info(f"🚨 ANALYSIS: overlapping_inputs (brake={brake:.1f}%, throttle={throttle:.1f}%)")
+        
+        if brake > 10 and steering_magnitude > 8 and can_trigger_situation('trail_braking_attempt', 15.0):
+            situations.append('trail_braking_attempt')
+            self._situation_cooldowns['trail_braking_attempt'] = current_time
+            logger.info(f"🚨 ANALYSIS: trail_braking_attempt (brake={brake:.1f}%, steering={steering:.1f}°)")
+        
+        # 8. PERFORMANCE ANALYSIS - Delta time based
+        if delta_time and abs(delta_time) > 0.1:
+            if delta_time > 1.0 and can_trigger_situation('losing_time', 15.0):
+                situations.append('losing_time')
+                self._situation_cooldowns['losing_time'] = current_time
+                logger.info(f"🚨 ANALYSIS: losing_time (delta={delta_time:.2f}s)")
+            
+            elif delta_time > 0.3 and can_trigger_situation('slight_time_loss', 20.0):
+                situations.append('slight_time_loss')
+                self._situation_cooldowns['slight_time_loss'] = current_time
+                logger.info(f"🚨 ANALYSIS: slight_time_loss (delta={delta_time:.2f}s)")
+        
+        # 9. FUEL & STRATEGY ANALYSIS
+        if fuel < 25 and can_trigger_situation('fuel_management', 30.0):
+            situations.append('fuel_management')
+            self._situation_cooldowns['fuel_management'] = current_time
+            logger.info(f"🚨 ANALYSIS: fuel_management (fuel={fuel:.1f}%)")
+        
+        # 10. CORNER ANALYSIS - Track position based
+        if hasattr(self, '_last_lap_pct') and lap_pct != self._last_lap_pct:
+            lap_pct_delta = abs(lap_pct - self._last_lap_pct)
+            
+            # Detect potential corners by steering and lap position
+            if steering_magnitude > 5 and lap_pct_delta > 0.001 and can_trigger_situation('corner_analysis', 8.0):
+                situations.append('corner_analysis')
+                self._situation_cooldowns['corner_analysis'] = current_time
+                logger.info(f"🚨 ANALYSIS: corner_analysis (steering={steering:.1f}°, lap_pct={lap_pct:.3f})")
+        
+        # 11. OVERALL DRIVING SMOOTHNESS
+        if len(self._telemetry_history) >= 180:  # 3 seconds of data
+            recent_data = self._telemetry_history[-180:]
+            
+            # Calculate overall input variance
+            throttle_var = np.var([h['throttle'] for h in recent_data])
+            brake_var = np.var([h['brake'] for h in recent_data])
+            steering_var = np.var([h['steering'] for h in recent_data])
+            
+            total_variance = throttle_var + brake_var + steering_var
+            if total_variance > 200 and can_trigger_situation('overall_inconsistency', 20.0):
+                situations.append('overall_inconsistency')
+                self._situation_cooldowns['overall_inconsistency'] = current_time
+                logger.info(f"🚨 ANALYSIS: overall_inconsistency (total_var={total_variance:.1f})")
+        
+        # Store values for next comparison
+        self._last_throttle = throttle
+        self._last_brake = brake
+        self._last_steering = steering
+        self._last_lap_pct = lap_pct
+        
+        return situations
+    
+    def _generate_llm_coaching_for_situation(self, telemetry: Dict[str, Any], situation: str) -> Optional[CoachingMessage]:
+        """Generate LLM coaching message for a specific driving situation"""
+        if not self.llm_enabled or not self.llm_api_key or self.llm_api_key == "your-openai-api-key-here":
+            return None
+        
+        # Get enhanced context with track and car specifics
+        enhanced_context = self._get_track_specific_context(telemetry, situation)
+        
+        # Generate LLM message with track-specific context
+        llm_message = self._call_openai_llm_for_situation(enhanced_context, telemetry, situation)
+        if llm_message:
+            logger.info(f"🤖 LLM generated message for {situation}: '{llm_message}'")
+            
+            # Map situations to categories - EXPANDED for comprehensive analysis
+            category_map = {
+                # Braking analysis
+                'panic_braking': 'braking',
+                'heavy_braking': 'braking',
+                'moderate_braking': 'braking',
+                'inconsistent_braking': 'braking',
+                
+                # Throttle analysis
+                'abrupt_throttle': 'throttle',
+                'traction_risk': 'throttle',
+                'jerky_throttle': 'throttle',
+                
+                # Steering & handling analysis
+                'excessive_steering': 'handling',
+                'high_speed_steering': 'handling',
+                'unstable_steering': 'handling',
+                
+                # Racing line & track position
+                'off_track_excursion': 'racing_line',
+                
+                # Speed management
+                'inconsistent_speed': 'speed_management',
+                'corner_too_fast': 'speed_management',
+                'corner_too_slow': 'speed_management',
+                
+                # Gear & RPM
+                'high_rpm': 'technique',
+                'low_rpm_high_gear': 'technique',
+                
+                # Combined inputs
+                'overlapping_inputs': 'technique',
+                'trail_braking_attempt': 'technique',
+                
+                # Performance analysis
+                'losing_time': 'performance',
+                'slight_time_loss': 'performance',
+                
+                # Strategy
+                'fuel_management': 'strategy',
+                
+                # Corner analysis
+                'corner_analysis': 'racing_line',
+                
+                # Overall consistency
+                'overall_inconsistency': 'general',
+                
+                # Legacy situations (keeping for compatibility)
+                'aggressive_braking': 'braking',
+                'sudden_throttle': 'throttle',
+                'wheel_spin_risk': 'throttle',
+                'understeer_risk': 'handling',
+                'oversteer_risk': 'handling',
+                'off_track': 'racing_line',
+                'high_speed_section': 'speed_management',
+                'slow_speed_section': 'speed_management',
+                'trail_braking': 'technique',
+                'low_fuel': 'strategy',
+                'corner_approach': 'racing_line'
+            }
+            
+            return CoachingMessage(
+                message=llm_message,
+                category=category_map.get(situation, 'general'),
+                priority=6,  # High priority for LLM messages
+                confidence=85.0,
+                data_source=f"LLM_situation_{situation}",
+                improvement_potential=0.1
+            )
+        
+        return None
+    
+    def _call_openai_llm_for_situation(self, coaching_context: str, telemetry: Dict[str, float], situation: str) -> str:
+        """Call OpenAI LLM to generate coaching message for a specific situation"""
+        try:
+            current_section = self._get_track_section(telemetry.get('lapDistPct', 0))
+            speed = telemetry.get('speed', 0)
+            throttle = telemetry.get('throttle', 0)
+            brake = telemetry.get('brake', 0)
+            steering = telemetry.get('steering', 0)
+            gear = telemetry.get('gear', 1)
+            rpm = telemetry.get('rpm', 0)
+            fuel = telemetry.get('fuelLevel', 100)
+            
+            # Get dynamic track and car information
+            track_name = telemetry.get('trackName', self.track_name or 'Unknown Track')
+            car_name = telemetry.get('carName', self.car_name or 'GT3 Car')
+            
+            # Create comprehensive situation-specific prompts with track context
+            situation_prompts = {
+                # BRAKING ANALYSIS
+                'panic_braking': f"Panic braking detected ({brake:.0f}% pressure) at {speed:.0f} mph on {track_name}. Help the driver brake more progressively and earlier.",
+                'heavy_braking': f"Heavy braking ({brake:.0f}% pressure) at {speed:.0f} mph on {track_name}. Provide braking technique advice for this track section.",
+                'moderate_braking': f"Moderate braking detected ({brake:.0f}% pressure) at {speed:.0f} mph on {track_name}. Analyze braking efficiency for this corner.",
+                'inconsistent_braking': f"Inconsistent braking pattern detected on {track_name}. Help improve braking consistency and pressure modulation.",
+                
+                # THROTTLE ANALYSIS
+                'abrupt_throttle': f"Abrupt throttle changes detected on {track_name} at {speed:.0f} mph. Provide advice on smoother throttle application.",
+                'traction_risk': f"Traction risk detected ({throttle:.0f}% throttle at {speed:.0f} mph) on {track_name}. Advise on power delivery and grip management.",
+                'jerky_throttle': f"Jerky throttle inputs detected on {track_name}. Help the driver develop smoother throttle control.",
+                
+                # STEERING & HANDLING ANALYSIS
+                'excessive_steering': f"Excessive steering input ({steering:.0f}°) at {speed:.0f} mph on {track_name}. Provide advice on steering efficiency.",
+                'high_speed_steering': f"Large steering input ({steering:.0f}°) at high speed ({speed:.0f} mph) on {track_name}. Analyze handling and stability.",
+                'unstable_steering': f"Unstable steering detected on {track_name}. Help improve steering smoothness and car control.",
+                
+                # RACING LINE & TRACK POSITION
+                'off_track_excursion': f"Off-track excursion detected at {speed:.0f} mph on {track_name}. Provide racing line guidance for this section.",
+                
+                # SPEED MANAGEMENT
+                'inconsistent_speed': f"Inconsistent speed management detected on {track_name}. Help improve pace consistency through corners.",
+                'corner_too_fast': f"Corner entry too fast ({speed:.0f} mph) on {track_name}. Provide advice on corner speed management.",
+                'corner_too_slow': f"Corner speed too conservative ({speed:.0f} mph) on {track_name}. Help find more pace through this section.",
+                
+                # GEAR & RPM ANALYSIS
+                'high_rpm': f"High RPM detected ({rpm:.0f} RPM) on {track_name}. Advise on gear selection and engine management.",
+                'low_rpm_high_gear': f"Low RPM in high gear (gear {gear}, {rpm:.0f} RPM) on {track_name}. Provide gearing advice for this section.",
+                
+                # COMBINED INPUT ANALYSIS
+                'overlapping_inputs': f"Overlapping brake/throttle inputs detected on {track_name}. Analyze technique and provide refinement advice.",
+                'trail_braking_attempt': f"Trail braking attempt detected on {track_name}. Provide feedback on this advanced technique.",
+                
+                # PERFORMANCE ANALYSIS
+                'losing_time': f"Significant time loss detected (+{telemetry.get('deltaTime', 0):.2f}s) on {track_name}. Identify key areas for improvement.",
+                'slight_time_loss': f"Minor time loss detected (+{telemetry.get('deltaTime', 0):.2f}s) on {track_name}. Provide fine-tuning advice.",
+                
+                # STRATEGY
+                'fuel_management': f"Fuel management situation ({fuel:.0f}% remaining) on {track_name}. Provide fuel-saving driving techniques.",
+                
+                # CORNER ANALYSIS
+                'corner_analysis': f"Corner analysis: {steering:.0f}° steering at {speed:.0f} mph on {track_name}. Provide corner-specific optimization advice.",
+                
+                # OVERALL CONSISTENCY
+                'overall_inconsistency': f"Overall driving inconsistency detected on {track_name}. Help improve smoothness across all inputs.",
+                
+                # LEGACY SITUATIONS (keeping for compatibility)
+                'aggressive_braking': f"Aggressive braking detected ({brake:.0f}% pressure) at {speed:.0f} mph on {track_name}. Provide braking technique advice.",
+                'sudden_throttle': f"Sudden throttle application detected on {track_name} at {speed:.0f} mph. Advise on smoother power delivery.",
+                'wheel_spin_risk': f"Wheel spin risk detected ({throttle:.0f}% throttle at {speed:.0f} mph) on {track_name}. Provide traction management advice.",
+                'understeer_risk': f"Potential understeer detected ({steering:.0f}°) at {speed:.0f} mph on {track_name}. Provide handling advice.",
+                'oversteer_risk': f"Potential oversteer detected ({steering:.0f}°) at {speed:.0f} mph on {track_name}. Provide car control advice.",
+                'off_track': f"Off-track detected at {speed:.0f} mph on {track_name}. Provide racing line guidance.",
+                'high_speed_section': f"High speed section ({speed:.0f} mph) on {track_name}. Provide advice for this fast section.",
+                'slow_speed_section': f"Technical section ({speed:.0f} mph) on {track_name}. Provide advice for this slow section.",
+                'trail_braking': f"Trail braking detected on {track_name}. Provide feedback on this advanced technique.",
+                'low_fuel': f"Low fuel situation on {track_name}. Provide fuel-saving driving advice.",
+                'corner_approach': f"Corner approach on {track_name} with {steering:.0f}° steering at {speed:.0f} mph. Provide cornering advice."
+            }
+            
+            base_prompt = situation_prompts.get(situation, f"Driving situation: {situation} on {track_name}")
+            
+            # Enhanced prompt with track knowledge
+            prompt = f"""{base_prompt}
+
+Current location: {current_section} on {track_name}
+Car: {car_name}
+Speed: {speed:.0f} mph
+Throttle: {throttle:.0f}%
+Brake: {brake:.0f}%
+Steering: {steering:.0f}°
+
+Use your knowledge of {track_name}'s specific layout, elevation changes, corner characteristics, and optimal racing lines. Consider:
+- Track-specific braking points and turn-in points
+- Elevation changes and how they affect car handling
+- Track surface characteristics and grip levels
+- Corner sequences and setup for following turns
+- Track-specific racing lines and apex points
+
+Give ONE specific, actionable coaching tip under 60 characters. Address the driver directly."""
+
+            headers = {
+                'Authorization': f'Bearer {self.llm_api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            payload = {
+                'model': self.llm_model,
+                'messages': [
+                    {'role': 'system', 'content': 'You are a professional racing coach with deep knowledge of racing circuits worldwide. Give concise, track-specific coaching advice. Respond with only the coaching message.'},
+                    {'role': 'user', 'content': prompt}
+                ],
+                'max_tokens': 50,
+                'temperature': 0.7
+            }
+            
+            response = requests.post(
+                'https://api.openai.com/v1/chat/completions',
+                headers=headers,
+                json=payload,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                message = result['choices'][0]['message']['content'].strip()
+                
+                # Clean up the message
+                message = message.replace('"', '').replace("'", "")
+                if message.endswith('.'):
+                    message = message[:-1]
+                
+                logger.info(f"🤖 LLM generated message: {message}")
+                return message
+            else:
+                logger.error(f"OpenAI API error: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"LLM generation failed: {e}")
+            return None

@@ -96,6 +96,11 @@ class GT3TelemetryServer:
         self.last_telemetry = {}
         self.last_session_info = {}
         
+        # Cached session info to avoid re-extraction once we have valid values
+        self._cached_track_name = None
+        self._cached_car_name = None
+        self._session_cache_valid = False
+        
         # Coaching server connection for sending telemetry data
         self.coaching_server_ws = None
         
@@ -150,6 +155,14 @@ class GT3TelemetryServer:
                 "isConnected": self.is_connected_to_iracing
             }))
             
+            # Send current session info to newly connected client
+            if self.last_session_info:
+                await websocket.send(json.dumps({
+                    "type": "SessionInfo",
+                    "data": self.last_session_info
+                }))
+                logger.debug(f"📤 Sent current session info to new client")
+            
             # Keep the connection alive
             async for message in websocket:
                 try:
@@ -173,9 +186,73 @@ class GT3TelemetryServer:
         
         if msg_type == "request_session_info":
             if self.last_session_info:
+                # Update session info with real-time car name from DriverInfo before sending
+                updated_session_info = self.last_session_info.copy()
+                
+                # Get real car name from DriverInfo structure (CORRECT METHOD)
+                real_car_name = None
+                try:
+                    driver_info = self.ir['DriverInfo']
+                    if driver_info and 'Drivers' in driver_info and len(driver_info['Drivers']) > 0:
+                        # Get the player's car index to find the right driver
+                        player_car_idx = driver_info.get('DriverCarIdx')
+                        logger.info(f"🔍 SESSION REQUEST DEBUG - Player car index: {player_car_idx}")
+                        
+                        # Find the player's driver entry
+                        player_driver = None
+                        for driver in driver_info['Drivers']:
+                            if driver.get('CarIdx') == player_car_idx:
+                                player_driver = driver
+                                break
+                        
+                        if player_driver:
+                            real_car_name = player_driver.get('CarScreenName', '')
+                            logger.info(f"🔍 SESSION REQUEST DEBUG - Real car name from player's DriverInfo: '{real_car_name}'")
+                        else:
+                            logger.warning(f"🔍 SESSION REQUEST DEBUG - Could not find player driver with CarIdx {player_car_idx}")
+                            # Fallback to first driver
+                            if len(driver_info['Drivers']) > 0:
+                                real_car_name = driver_info['Drivers'][0].get('CarScreenName', '')
+                                logger.warning(f"🔍 SESSION REQUEST DEBUG - Using fallback driver car name: '{real_car_name}'")
+                    else:
+                        logger.warning(f"🔍 SESSION REQUEST DEBUG - DriverInfo structure missing or empty")
+                except Exception as e:
+                    logger.warning(f"🔍 SESSION REQUEST DEBUG - Could not access DriverInfo: {e}")
+                    # Fallback to telemetry
+                    real_car_name = self.safe_get_telemetry('CarScreenName')
+                    logger.info(f"🔍 SESSION REQUEST DEBUG - Fallback car name from telemetry: '{real_car_name}'")
+                
+                if real_car_name and real_car_name not in ['GT3 Car', 'Race Car', '', None]:
+                    # Update the DriverInfo with real car name - find the correct player driver
+                    if 'DriverInfo' in updated_session_info and 'Drivers' in updated_session_info['DriverInfo']:
+                        drivers = updated_session_info['DriverInfo']['Drivers']
+                        player_car_idx = updated_session_info['DriverInfo'].get('DriverCarIdx', 0)
+                        
+                        # Find the player's driver entry to update
+                        player_driver_updated = False
+                        for driver in drivers:
+                            if driver.get('CarIdx') == player_car_idx:
+                                old_name = driver.get('CarScreenName', 'Unknown')
+                                driver['CarScreenName'] = real_car_name
+                                logger.info(f"✅ Updated player driver (CarIdx {player_car_idx}) with real car name: '{old_name}' → '{real_car_name}'")
+                                player_driver_updated = True
+                                break
+                        
+                        # Fallback: update first driver if player not found
+                        if not player_driver_updated and len(drivers) > 0:
+                            old_name = drivers[0].get('CarScreenName', 'Unknown')
+                            drivers[0]['CarScreenName'] = real_car_name
+                            logger.info(f"✅ Updated fallback driver with real car name: '{old_name}' → '{real_car_name}'")
+                else:
+                    logger.warning(f"⚠️  No valid real car name available, keeping existing: '{updated_session_info.get('DriverInfo', {}).get('Drivers', [{}])[0].get('CarScreenName', 'Unknown')}'")
+                
+                # Log what we're about to send
+                final_car_name = updated_session_info.get('DriverInfo', {}).get('Drivers', [{}])[0].get('CarScreenName', 'Unknown')
+                logger.info(f"🚗 SENDING session info with car name: '{final_car_name}'")
+                
                 await websocket.send(json.dumps({
                     "type": "SessionInfo",
-                    "data": self.last_session_info
+                    "data": updated_session_info
                 }))
         elif msg_type == "request_telemetry":
             if self.last_telemetry:
@@ -253,6 +330,18 @@ class GT3TelemetryServer:
                     if track_name and track_name not in ['iRacing Track', '']:
                         logger.info(f"🎯 DIRECT ACCESS SUCCESS - Found real track: {track_name}")
                         
+                        # Try to get real car info from telemetry
+                        real_car_name = self.safe_get_telemetry('CarScreenName')
+                        real_car_class = self.safe_get_telemetry('CarClassShortName')
+                        
+                        # Use real car name if available, otherwise use a better fallback
+                        car_name_to_use = real_car_name if real_car_name and real_car_name not in ['GT3 Car', 'Race Car', ''] else None
+                        if not car_name_to_use:
+                            # Try alternative car name fields
+                            car_name_to_use = self.safe_get_telemetry('CarScreenNameShort') or 'GT3 Car'
+                        
+                        logger.info(f"🚗 Direct access using car name: '{car_name_to_use}' (real: '{real_car_name}')")
+                        
                         # Build complete session info from direct access
                         session_info_raw = {
                             'WeekendInfo': weekend_info_direct,
@@ -260,10 +349,10 @@ class GT3TelemetryServer:
                                 'DriverCarIdx': 0,
                                 'Drivers': [{
                                     'CarIdx': 0,
-                                    'CarScreenName': 'GT3 Car',
+                                    'CarScreenName': car_name_to_use,
                                     'CarPath': 'gt3',
                                     'CarID': 0,
-                                    'CarClassShortName': 'GT3'
+                                    'CarClassShortName': real_car_class or 'GT3'
                                 }]
                             },
                             'SessionInfo': {
@@ -446,6 +535,75 @@ class GT3TelemetryServer:
     
     def _build_final_session_info(self, session_info_raw):
         """Helper method to build final session info structure"""
+        
+        # Try to get real car name from DriverInfo structure (CORRECT METHOD)
+        real_car_name = None
+        car_screen_name_short = None
+        car_path = None
+        
+        try:
+            # Access DriverInfo the correct way and find the current player's driver
+            driver_info = self.ir['DriverInfo']
+            if driver_info and 'Drivers' in driver_info and len(driver_info['Drivers']) > 0:
+                # Get the player's car index to find the right driver
+                player_car_idx = driver_info.get('DriverCarIdx')
+                logger.info(f"🔍 CAR DEBUG - Player car index: {player_car_idx}")
+                logger.info(f"🔍 CAR DEBUG - Total drivers: {len(driver_info['Drivers'])}")
+                
+                # Find the player's driver entry
+                player_driver = None
+                for driver in driver_info['Drivers']:
+                    car_idx = driver.get('CarIdx')
+                    logger.debug(f"🔍 CAR DEBUG - Checking driver CarIdx {car_idx} vs player {player_car_idx}")
+                    if car_idx == player_car_idx:
+                        player_driver = driver
+                        logger.info(f"🔍 CAR DEBUG - Found player driver at CarIdx {car_idx}")
+                        break
+                
+                if player_driver:
+                    real_car_name = player_driver.get('CarScreenName', '')
+                    car_screen_name_short = player_driver.get('CarScreenNameShort', '')
+                    car_path = player_driver.get('CarPath', '')
+                    logger.info(f"🔍 CAR DEBUG - Successfully found player's car data")
+                    logger.info(f"🔍 CAR DEBUG -   CarScreenName: '{real_car_name}'")
+                    logger.info(f"🔍 CAR DEBUG -   CarScreenNameShort: '{car_screen_name_short}'")
+                    logger.info(f"🔍 CAR DEBUG -   CarPath: '{car_path}'")
+                else:
+                    logger.warning(f"🔍 CAR DEBUG - Could not find player driver with CarIdx {player_car_idx}")
+                    # Fallback: use first driver if player not found
+                    if len(driver_info['Drivers']) > 0:
+                        driver_data = driver_info['Drivers'][0]
+                        real_car_name = driver_data.get('CarScreenName', '')
+                        car_screen_name_short = driver_data.get('CarScreenNameShort', '')
+                        car_path = driver_data.get('CarPath', '')
+                        logger.warning(f"🔍 CAR DEBUG - Using fallback driver at index 0")
+            else:
+                logger.warning(f"🔍 CAR DEBUG - DriverInfo structure missing or empty")
+        except Exception as e:
+            logger.warning(f"🔍 CAR DEBUG - Could not access DriverInfo structure: {e}")
+            
+            # Fallback: Try telemetry fields as backup
+            real_car_name = self.safe_get_telemetry('CarScreenName')
+            car_screen_name_short = self.safe_get_telemetry('CarScreenNameShort')
+            car_path = self.safe_get_telemetry('CarPath')
+            logger.info(f"🔍 CAR DEBUG - Fallback to telemetry fields:")
+            logger.info(f"� CAR DEBUG -   CarScreenName: '{real_car_name}'")
+            logger.info(f"🔍 CAR DEBUG -   CarScreenNameShort: '{car_screen_name_short}'")
+            logger.info(f"🔍 CAR DEBUG -   CarPath: '{car_path}'")
+        
+        # Try multiple car name sources in priority order
+        if real_car_name and real_car_name not in ['GT3 Car', 'Race Car', '', None]:
+            default_car_name = real_car_name
+            logger.info(f"🚗 SUCCESS! Using real CarScreenName: '{default_car_name}'")
+        elif car_screen_name_short and car_screen_name_short not in ['GT3 Car', 'Race Car', '', None]:
+            default_car_name = car_screen_name_short
+            logger.info(f"🚗 SUCCESS! Using real CarScreenNameShort: '{default_car_name}'")
+        else:
+            default_car_name = 'GT3 Car'
+            logger.warning(f"🚗 Falling back to generic name: '{default_car_name}' (no real car data found)")
+        
+        logger.info(f"🚗 Building session info with car name: '{default_car_name}'")
+        
         # Create comprehensive session info structure
         basic_session_info = {
             'WeekendInfo': {
@@ -460,7 +618,7 @@ class GT3TelemetryServer:
                 'DriverCarIdx': 0,
                 'Drivers': [{
                     'CarIdx': 0,
-                    'CarScreenName': 'GT3 Car',
+                    'CarScreenName': default_car_name,
                     'CarPath': 'gt3',
                     'CarID': 0,
                     'CarClassShortName': 'GT3'
@@ -498,24 +656,40 @@ class GT3TelemetryServer:
         else:
             logger.debug("No valid session info found, using enhanced defaults")
         
-        # Enhance defaults with telemetry data if available
+        # Enhance defaults with telemetry data if available (only if still generic)
         try:
             player_car_class = self.safe_get_telemetry('PlayerCarClass')
             if player_car_class is not None:
-                # Update car info based on telemetry
+                # Update car info based on telemetry only if we still have generic names
                 drivers = basic_session_info['DriverInfo']['Drivers']
                 if drivers and len(drivers) > 0:
-                    if drivers[0]['CarScreenName'] == 'GT3 Car':
-                        # Enhance with class-specific names
-                        class_names = {
-                            0: 'GT3 Class Car',
-                            1: 'GTE Class Car', 
-                            2: 'LMP2 Class Car',
-                            3: 'LMP1 Class Car',
-                            4: 'Formula Class Car'
-                        }
-                        drivers[0]['CarScreenName'] = class_names.get(player_car_class, f'Class {player_car_class} Car')
-                        drivers[0]['CarClassShortName'] = f'Class {player_car_class}'
+                    current_car_name = drivers[0]['CarScreenName']
+                    # ONLY enhance if we have truly generic names - don't override real car names
+                    if current_car_name in ['GT3 Car', 'Race Car', 'GT3 Class Car', 'GTE Class Car', 'LMP2 Class Car']:
+                        # Only enhance if we have generic names - try real car name first
+                        if real_car_name and real_car_name not in ['GT3 Car', 'Race Car', 'GT3 Class Car']:
+                            drivers[0]['CarScreenName'] = real_car_name
+                            logger.info(f"✅ Enhanced car name with real DriverInfo data: {real_car_name}")
+                        else:
+                            # Last resort: use class-based names only if no real name available
+                            class_names = {
+                                0: 'GT3 Class Car',
+                                1: 'GTE Class Car', 
+                                2: 'LMP2 Class Car',
+                                3: 'LMP1 Class Car',
+                                4: 'Formula Class Car'
+                            }
+                            fallback_name = class_names.get(player_car_class, f'Class {player_car_class} Car')
+                            drivers[0]['CarScreenName'] = fallback_name
+                            drivers[0]['CarClassShortName'] = f'Class {player_car_class}'
+                            logger.info(f"🔄 Using class fallback: {fallback_name}")
+                    else:
+                        logger.info(f"🚗 Keeping real car name (not enhancing): '{current_car_name}'")
+                        
+                        # Update class name if we have real data
+                        real_car_class = self.safe_get_telemetry('CarClassShortName')
+                        if real_car_class:
+                            drivers[0]['CarClassShortName'] = real_car_class
                         
         except Exception as e:
             logger.debug(f"Could not enhance session info with telemetry: {e}")
@@ -524,6 +698,283 @@ class GT3TelemetryServer:
         logger.info(f"🔍 SESSION DEBUG - {json.dumps(basic_session_info, indent=2, default=str)}")
         
         return basic_session_info
+    
+    # =============================================================================
+    # SECTION 1: TELEMETRY DATA METHODS - Real-time car performance data
+    # =============================================================================
+    
+    def get_telemetry_data_clean(self) -> Optional[Dict[str, Any]]:
+        """Get pure telemetry data only - no session or driver info mixed in"""
+        try:
+            telemetry = {}
+            
+            # Core telemetry fields for GT3 coaching
+            telemetry_fields = {
+                # Session data
+                'sessionTime': 'SessionTime',
+                'sessionTick': 'SessionTick', 
+                'sessionFlags': 'SessionFlags',
+                'sessionState': 'SessionState',
+                'paceFlags': 'PaceFlags',
+                
+                # Car performance
+                'speed': 'Speed',
+                'rpm': 'RPM', 
+                'gear': 'Gear',
+                'throttle': 'Throttle',
+                'brake': 'Brake',
+                'steering': 'SteeringWheelAngle',
+                
+                # Lap timing
+                'lapCurrentLapTime': 'LapCurrentLapTime',
+                'lapLastLapTime': 'LapLastLapTime',
+                'lapBestLapTime': 'LapBestLapTime',
+                'lapDistPct': 'LapDistPct',
+                'lap': 'Lap',
+                
+                # Delta timing (iRacing native deltas)
+                'lapDeltaToBestLap': 'LapDeltaToBestLap',
+                'lapDeltaToOptimalLap': 'LapDeltaToOptimalLap',
+                'lapDeltaToSessionBestLap': 'LapDeltaToSessionBestLap',
+                
+                # Position and race data
+                'position': 'Position',
+                'classPosition': 'ClassPosition',
+                
+                # Track and car status
+                'playerTrackSurface': 'PlayerTrackSurface',
+                
+                # Vehicle dynamics for oversteer/understeer detection
+                'yawRate': 'YawRate',
+                'yaw': 'Yaw',
+                'roll': 'Roll',
+                'rollRate': 'RollRate',
+                'pitch': 'Pitch',
+                'pitchRate': 'PitchRate',
+                'velocityX': 'VelocityX',
+                'velocityY': 'VelocityY',
+                'velocityZ': 'VelocityZ',
+                'latAccel': 'LatAccel',
+                'longAccel': 'LongAccel',
+                'vertAccel': 'VertAccel',
+                'steeringTorque': 'SteeringWheelTorque',
+                
+                # Environmental
+                'trackTempCrew': 'TrackTempCrew',
+                'airTemp': 'AirTemp',
+                'weatherType': 'WeatherType',
+                
+                # Fuel (converted from liters to gallons for US display)
+                'fuelLevel': 'FuelLevel',
+                'fuelLevelPct': 'FuelLevelPct',
+                'fuelUsePerHour': 'FuelUsePerHour',
+                
+                # Pit and track status
+                'onPitRoad': 'OnPitRoad',
+            }
+            
+            # Get basic telemetry
+            for field_name, irsdk_key in telemetry_fields.items():
+                value = self.safe_get_telemetry(irsdk_key)
+                if value is not None:
+                    # Convert speed from m/s to MPH
+                    if field_name == 'speed':
+                        value = value * 2.23694
+                    # Convert throttle and brake from 0-1 to 0-100 percentage
+                    elif field_name in ['throttle', 'brake']:
+                        value = value * 100
+                    # Convert fuel from liters to gallons
+                    elif field_name in ['fuelLevel', 'fuelUsePerHour']:
+                        value = value * 0.264172
+                    
+                    telemetry[field_name] = value
+            
+            # Calculate delta time
+            on_pit_road = self.safe_get_telemetry('OnPitRoad')
+            native_delta = None
+            
+            # Try different delta fields in order of preference
+            delta_fields = ['LapDeltaToBestLap', 'LapDeltaToOptimalLap', 'LapDeltaToSessionBestLap']
+            for delta_field in delta_fields:
+                delta_value = self.safe_get_telemetry(delta_field)
+                if delta_value is not None and abs(delta_value) < 999:
+                    native_delta = delta_value
+                    break
+            
+            # Set delta time
+            if not on_pit_road and native_delta is not None:
+                telemetry['deltaTime'] = native_delta
+                telemetry['deltaSource'] = 'iRacing_native'
+            elif not on_pit_road:
+                # Fallback: calculate delta if native isn't available
+                current_lap_time = self.safe_get_telemetry('LapCurrentLapTime')
+                best_lap_time = self.safe_get_telemetry('LapBestLapTime')
+                
+                if (current_lap_time is not None and best_lap_time is not None and best_lap_time > 0):
+                    telemetry['deltaTime'] = current_lap_time - best_lap_time
+                    telemetry['deltaSource'] = 'calculated_fallback'
+                else:
+                    telemetry['deltaTime'] = None
+                    telemetry['deltaSource'] = 'unavailable'
+            else:
+                # In pits - don't show delta
+                telemetry['deltaTime'] = None
+                telemetry['deltaSource'] = 'in_pits'
+            
+            # Get tire pressures
+            tire_pressure_mapping = {
+                'tirePressureLF': 'LFTirePres',
+                'tirePressureRF': 'RFTirePres',
+                'tirePressureLR': 'LRTirePres', 
+                'tirePressureRR': 'RRTirePres'
+            }
+            
+            for display_name, irsdk_key in tire_pressure_mapping.items():
+                pressure = self.safe_get_telemetry(irsdk_key)
+                if pressure is not None:
+                    telemetry[display_name] = pressure
+            
+            return telemetry if telemetry else None
+                
+        except Exception as e:
+            logger.error(f"Error getting telemetry data: {e}")
+            return None
+    
+    # =============================================================================
+    # SECTION 2: SESSION & DRIVER DATA METHODS - Track and car information
+    # =============================================================================
+    
+    def get_session_data(self) -> Dict[str, Any]:
+        """Get track/session information only"""
+        try:
+            # Try to get track info from WeekendInfo (most reliable)
+            track_name = "Unknown Track"
+            track_config = ""
+            
+            if self.last_session_info:
+                weekend_info = self.last_session_info.get('WeekendInfo', {})
+                track_display_name = weekend_info.get('TrackDisplayName', '')
+                track_config_name = weekend_info.get('TrackConfigName', '')
+                
+                if track_display_name and track_display_name not in ['iRacing Track', '']:
+                    track_name = track_display_name
+                    track_config = track_config_name or ""
+                    logger.debug(f"✅ Track from session: {track_name}")
+                else:
+                    logger.debug(f"❌ Session track name rejected: '{track_display_name}'")
+            
+            # Fallback to telemetry if session info isn't available
+            if track_name == "Unknown Track":
+                track_display_name = self.safe_get_telemetry('TrackDisplayName')
+                track_config_name = self.safe_get_telemetry('TrackConfigName')
+                if track_display_name and track_display_name not in ['iRacing Track', '']:
+                    track_name = track_display_name
+                    track_config = track_config_name or ""
+                    logger.debug(f"✅ Track from telemetry: {track_name}")
+            
+            # Build full track name
+            full_track_name = track_name
+            if track_config and track_config.strip():
+                full_track_name += f" - {track_config}"
+            
+            return {
+                'trackName': track_name,
+                'trackConfig': track_config,
+                'fullTrackName': full_track_name,
+                'trackDisplayName': track_name,  # For backward compatibility
+                'trackConfigName': track_config  # For backward compatibility
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting session data: {e}")
+            return {
+                'trackName': "Unknown Track",
+                'trackConfig': "",
+                'fullTrackName': "Unknown Track",
+                'trackDisplayName': "Unknown Track",
+                'trackConfigName': ""
+            }
+    
+    def get_driver_data(self) -> Dict[str, Any]:
+        """Get driver/car information only"""
+        try:
+            car_name = "Unknown Car"
+            
+            # Try to get car name from DriverInfo (most reliable)
+            try:
+                driver_info = self.ir['DriverInfo']
+                if driver_info and 'Drivers' in driver_info and len(driver_info['Drivers']) > 0:
+                    player_car_idx = driver_info.get('DriverCarIdx')
+                    
+                    # Find the player's driver entry
+                    player_driver = None
+                    for driver in driver_info['Drivers']:
+                        if driver.get('CarIdx') == player_car_idx:
+                            player_driver = driver
+                            break
+                    
+                    if player_driver:
+                        driver_car_name = player_driver.get('CarScreenName', '')
+                        if driver_car_name and driver_car_name not in ['GT3 Car', 'Race Car', '']:
+                            car_name = driver_car_name
+                            logger.debug(f"✅ Car from live DriverInfo: {car_name}")
+                    else:
+                        # Fallback to first driver
+                        if len(driver_info['Drivers']) > 0:
+                            driver_car_name = driver_info['Drivers'][0].get('CarScreenName', '')
+                            if driver_car_name and driver_car_name not in ['GT3 Car', 'Race Car', '']:
+                                car_name = driver_car_name
+                                logger.debug(f"✅ Car from fallback DriverInfo: {car_name}")
+            except Exception as e:
+                logger.debug(f"Could not get car from live DriverInfo: {e}")
+            
+            # Try cached session info if live DriverInfo didn't work
+            if car_name == "Unknown Car" and self.last_session_info:
+                try:
+                    driver_info = self.last_session_info.get('DriverInfo', {})
+                    drivers = driver_info.get('Drivers', [])
+                    if drivers and len(drivers) > 0:
+                        driver_car_name = drivers[0].get('CarScreenName', '')
+                        if driver_car_name and driver_car_name not in ['GT3 Car', 'Race Car', '']:
+                            car_name = driver_car_name
+                            logger.debug(f"✅ Car from cached DriverInfo: {car_name}")
+                except Exception as e:
+                    logger.debug(f"Could not get car from cached DriverInfo: {e}")
+            
+            # Final fallback to telemetry
+            if car_name == "Unknown Car":
+                car_screen_name = self.safe_get_telemetry('CarScreenName')
+                if car_screen_name and car_screen_name not in ['GT3 Car', 'Race Car', '']:
+                    car_name = car_screen_name
+                    logger.debug(f"✅ Car from telemetry: {car_name}")
+                else:
+                    car_screen_name_short = self.safe_get_telemetry('CarScreenNameShort')
+                    if car_screen_name_short and car_screen_name_short not in ['GT3 Car', 'Race Car', '']:
+                        car_name = car_screen_name_short
+                        logger.debug(f"✅ Car from telemetry short: {car_name}")
+            
+            return {
+                'carName': car_name,
+                'driverCarName': car_name  # For backward compatibility
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting driver data: {e}")
+            return {
+                'carName': "Unknown Car",
+                'driverCarName': "Unknown Car"
+            }
+    
+    # =============================================================================
+    # SECTION 3: COMBINED DATA METHODS - For backward compatibility
+    # =============================================================================
+    
+    def _reset_session_cache(self):
+        """Reset session cache when session changes"""
+        self._cached_track_name = None
+        self._cached_car_name = None
+        self._session_cache_valid = False
+        logger.info("🔄 Session cache reset - will re-extract on next telemetry")
     
     def safe_get_telemetry(self, key: str):
         """Safely get telemetry value"""
@@ -589,346 +1040,33 @@ class GT3TelemetryServer:
     
 
     async def get_telemetry_data(self) -> Optional[Dict[str, Any]]:
-        """Get telemetry data - focus on core GT3 coaching data"""
+        """Get combined telemetry data with session and driver info"""
         try:
-            telemetry = {}
-            data_count = 0
-            
-            # Core telemetry fields for GT3 coaching
-            telemetry_fields = {
-                # Session data
-                'sessionTime': 'SessionTime',
-                'sessionTick': 'SessionTick', 
-                'sessionFlags': 'SessionFlags',
-                'sessionState': 'SessionState',  # Add session state
-                'paceFlags': 'PaceFlags',
-                
-                # Car performance
-                'speed': 'Speed',
-                'rpm': 'RPM', 
-                'gear': 'Gear',
-                'throttle': 'Throttle',
-                'brake': 'Brake',
-                'steering': 'SteeringWheelAngle',
-                
-                # Lap timing
-                'lapCurrentLapTime': 'LapCurrentLapTime',
-                'lapLastLapTime': 'LapLastLapTime',
-                'lapBestLapTime': 'LapBestLapTime',
-                'lapDistPct': 'LapDistPct',
-                'lap': 'Lap',
-                
-                # Delta timing (iRacing native deltas)
-                'lapDeltaToBestLap': 'LapDeltaToBestLap',
-                'lapDeltaToOptimalLap': 'LapDeltaToOptimalLap',
-                'lapDeltaToSessionBestLap': 'LapDeltaToSessionBestLap',
-                
-                # Position and race data
-                'position': 'Position',
-                'classPosition': 'ClassPosition',
-                
-                # Track and car status
-                'playerTrackSurface': 'PlayerTrackSurface',  # Add track surface
-                
-                # Vehicle dynamics for oversteer/understeer detection
-                'yawRate': 'YawRate',           # Yaw rate (rotation speed)
-                'yaw': 'Yaw',                   # Yaw angle
-                'roll': 'Roll',                 # Roll angle
-                'rollRate': 'RollRate',         # Roll rate
-                'pitch': 'Pitch',               # Pitch angle
-                'pitchRate': 'PitchRate',       # Pitch rate
-                'velocityX': 'VelocityX',       # Longitudinal velocity
-                'velocityY': 'VelocityY',       # Lateral velocity
-                'velocityZ': 'VelocityZ',       # Vertical velocity
-                'latAccel': 'LatAccel',         # Lateral acceleration (G-force)
-                'longAccel': 'LongAccel',       # Longitudinal acceleration
-                'vertAccel': 'VertAccel',       # Vertical acceleration
-                'steeringTorque': 'SteeringWheelTorque',  # Force feedback
-                
-                # Environmental
-                'trackTempCrew': 'TrackTempCrew',
-                'airTemp': 'AirTemp',
-                'weatherType': 'WeatherType',
-                
-                # Fuel (converted from liters to gallons for US display)
-                'fuelLevel': 'FuelLevel',
-                'fuelLevelPct': 'FuelLevelPct',
-                'fuelUsePerHour': 'FuelUsePerHour',
-                
-                # Pit and track status
-                'onPitRoad': 'OnPitRoad',
-            }
-            
-            # Get basic telemetry
-            for field_name, irsdk_key in telemetry_fields.items():
-                value = self.safe_get_telemetry(irsdk_key)
-                if value is not None:
-                    # Convert speed from m/s to MPH
-                    if field_name == 'speed':
-                        value = value * 2.23694  # Convert m/s to MPH
-                    # Convert throttle and brake from 0-1 to 0-100 percentage
-                    elif field_name in ['throttle', 'brake']:
-                        value = value * 100  # Convert to percentage
-                    # Convert fuel from liters to gallons (iRacing uses liters internally)
-                    elif field_name in ['fuelLevel', 'fuelUsePerHour']:
-                        value = value * 0.264172  # Convert liters to US gallons
-                    # fuelLevelPct is already a percentage (0-1), keep as-is
-                    telemetry[field_name] = value
-                    data_count += 1
-            
-            # Use iRacing's native delta time (preferred) or calculate fallback
-            on_pit_road = self.safe_get_telemetry('OnPitRoad')
-            
-            # Try to use iRacing's native delta fields (most accurate)
-            native_delta = None
-            
-            # Try different delta fields in order of preference
-            delta_fields = ['LapDeltaToBestLap', 'LapDeltaToOptimalLap', 'LapDeltaToSessionBestLap']
-            for delta_field in delta_fields:
-                delta_value = self.safe_get_telemetry(delta_field)
-                if delta_value is not None and abs(delta_value) < 999:  # Valid delta (not 999+ invalid value)
-                    native_delta = delta_value
-                    logger.debug(f"Using native delta from {delta_field}: {delta_value:.3f}")
-                    break
-            
-            # Set delta time
-            if not on_pit_road and native_delta is not None:
-                telemetry['deltaTime'] = native_delta
-                telemetry['deltaSource'] = 'iRacing_native'
-                data_count += 1
-            elif not on_pit_road:
-                # Fallback: calculate delta if native isn't available
-                current_lap_time = self.safe_get_telemetry('LapCurrentLapTime')
-                best_lap_time = self.safe_get_telemetry('LapBestLapTime')
-                
-                if (current_lap_time is not None and best_lap_time is not None and best_lap_time > 0):
-                    telemetry['deltaTime'] = current_lap_time - best_lap_time
-                    telemetry['deltaSource'] = 'calculated_fallback'
-                    logger.debug(f"Using calculated delta: {telemetry['deltaTime']:.3f}")
-                    data_count += 1
-                else:
-                    telemetry['deltaTime'] = None
-                    telemetry['deltaSource'] = 'unavailable'
-                    data_count += 1
-            else:
-                # In pits - don't show delta
-                telemetry['deltaTime'] = None
-                telemetry['deltaSource'] = 'in_pits'
-                logger.debug("In pits - delta time disabled")
-                data_count += 1
-            
-            # Get car and track information - improved fallback system
-            car_name = "Unknown Car"
-            track_name = "Unknown Track"
-            
-            # First, try to get car/track info from telemetry data directly
-            try:
-                # Try to get car name from telemetry
-                car_screen_name = self.safe_get_telemetry('CarScreenName')
-                if car_screen_name:
-                    car_name = car_screen_name
-                    logger.info(f"✅ Car name from telemetry: {car_name}")
-                else:
-                    # Try alternative car name fields
-                    car_screen_name_short = self.safe_get_telemetry('CarScreenNameShort')
-                    if car_screen_name_short:
-                        car_name = car_screen_name_short
-                        logger.info(f"✅ Car name from telemetry (short): {car_name}")
-                
-                # PRIORITIZE WeekendInfo data for track name (most reliable source)
-                weekend_info_track_name = None
-                if self.last_session_info:
-                    try:
-                        weekend_info = self.last_session_info.get('WeekendInfo', {})
-                        track_display_name = weekend_info.get('TrackDisplayName', '')
-                        track_config_name = weekend_info.get('TrackConfigName', '')
-                        
-                        logger.info(f"🔍 TELEMETRY DEBUG - WeekendInfo ALL KEY-VALUE PAIRS:")
-                        for key, value in weekend_info.items():
-                            logger.info(f"🔍 TELEMETRY DEBUG -   {key}: '{value}'")
-                        logger.info(f"🔍 TELEMETRY DEBUG - TrackDisplayName: '{track_display_name}', TrackConfigName: '{track_config_name}'")
-                        
-                        if track_display_name and track_display_name not in ['iRacing Track']:
-                            weekend_info_track_name = track_display_name
-                            if track_config_name and track_config_name.strip():
-                                weekend_info_track_name += f" - {track_config_name}"
-                            logger.info(f"✅ Track name from WeekendInfo (PRIMARY): {weekend_info_track_name}")
-                        else:
-                            logger.info(f"❌ WeekendInfo track name rejected or empty: '{track_display_name}'")
-                    except Exception as e:
-                        logger.warning(f"Could not extract track from WeekendInfo: {e}")
-                else:
-                    logger.info("❌ No session info available for WeekendInfo extraction")
-                
-                # Use WeekendInfo track name if available, otherwise try telemetry
-                if weekend_info_track_name:
-                    track_name = weekend_info_track_name
-                else:
-                    # Fallback to telemetry track fields
-                    track_display_name = self.safe_get_telemetry('TrackDisplayName')
-                    track_config_name = self.safe_get_telemetry('TrackConfigName')
-                    if track_display_name:
-                        track_name = track_display_name
-                        if track_config_name:
-                            track_name += f" - {track_config_name}"
-                        logger.info(f"✅ Track name from telemetry (FALLBACK): {track_name}")
-                    else:
-                        # Try alternative track name fields
-                        track_name_short = self.safe_get_telemetry('TrackDisplayNameShort')
-                        if track_name_short:
-                            track_name = track_name_short
-                            logger.info(f"✅ Track name from telemetry short (FALLBACK): {track_name}")
-                        
-            except Exception as e:
-                logger.debug(f"Could not get car/track from telemetry: {e}")
-            
-            # Also extract car info from session info if needed
-            if car_name == "Unknown Car" and self.last_session_info:
-                try:
-                    driver_info = self.last_session_info.get('DriverInfo', {})
-                    drivers = driver_info.get('Drivers', [])
-                    if drivers and len(drivers) > 0:
-                        session_car_name = drivers[0].get('CarScreenName', '')
-                        if session_car_name and session_car_name != 'GT3 Car':
-                            car_name = session_car_name
-                            logger.info(f"✅ Car name from session info: {car_name}")
-                except Exception as e:
-                    logger.debug(f"Could not extract car info from session: {e}")
-            
-            # Enhanced fallback system using telemetry data patterns
-            if car_name == "Unknown Car":
-                try:
-                    player_car_class = self.safe_get_telemetry('PlayerCarClass')
-                    if player_car_class is not None:
-                        # Car class mapping for common iRacing classes
-                        car_class_names = {
-                            0: "GT3 Car",  # Common GT3 class
-                            1: "GTE Car",
-                            2: "LMP2 Car", 
-                            3: "LMP1 Car",
-                            4: "Formula Car",
-                            5: "Stock Car",
-                            6: "Touring Car",
-                            7: "Sports Car",
-                            8: "Prototype Car"
-                        }
-                        car_name = car_class_names.get(player_car_class, f"Car Class {player_car_class}")
-                        logger.info(f"🔄 Using car class fallback: {car_name}")
-                        
-                        # For GT3 class, try to be more specific based on telemetry signature
-                        if player_car_class == 0:  # GT3 class
-                            rpm = self.safe_get_telemetry('RPM')
-                            max_gear = self.safe_get_telemetry('Gear')
-                            if rpm and max_gear:
-                                # Simple heuristics based on common GT3 cars
-                                if rpm > 8000:
-                                    car_name = "Ferrari 488 GT3 (estimated)"
-                                elif rpm > 7500:
-                                    car_name = "Porsche 911 GT3 R (estimated)"
-                                elif rpm > 7000:
-                                    car_name = "Mercedes AMG GT3 (estimated)"
-                                else:
-                                    car_name = "BMW M4 GT3 (estimated)"
-                                logger.info(f"🎯 GT3 car estimation: {car_name}")
-                except Exception as e:
-                    logger.debug(f"Could not determine car from class: {e}")
-            
-            # Enhanced track fallback - only use actual iRacing track data
-            if track_name == "Unknown Track":
-                try:
-                    # Try to get track info directly from iRacing telemetry fields
-                    track_display_name_direct = self.safe_get_telemetry('TrackDisplayName')
-                    track_config_name_direct = self.safe_get_telemetry('TrackConfigName')
-                    
-                    if track_display_name_direct:
-                        track_name = track_display_name_direct
-                        if track_config_name_direct:
-                            track_name += f" - {track_config_name_direct}"
-                        logger.info(f"🏁 Track name from direct telemetry: {track_name}")
-                    else:
-                        # Last resort: check if we have any identifying track characteristics
-                        track_length = self.safe_get_telemetry('TrackLength')
-                        if track_length:
-                            track_name = f"Track ({track_length:.2f}km)"
-                            logger.info(f"🏁 Track identified by length: {track_name}")
-                        else:
-                            track_name = "iRacing Track"
-                            logger.debug("Using generic track fallback")
-                        
-                except Exception as e:
-                    logger.debug(f"Could not determine track: {e}")
-                    track_name = "iRacing Track"
-            
-            telemetry['carName'] = car_name
-            telemetry['trackName'] = track_name
-            
-            # Also include detailed track info for coaching server
-            if self.last_session_info:
-                try:
-                    weekend_info = self.last_session_info.get('WeekendInfo', {})
-                    telemetry['trackDisplayName'] = weekend_info.get('TrackDisplayName', track_name)
-                    telemetry['trackConfigName'] = weekend_info.get('TrackConfigName', '')
-                    telemetry['trackCity'] = weekend_info.get('TrackCity', '')
-                    telemetry['trackCountry'] = weekend_info.get('TrackCountry', '')
-                    
-                    # Also include driver/car info from session
-                    driver_info = self.last_session_info.get('DriverInfo', {})
-                    drivers = driver_info.get('Drivers', [])
-                    if drivers and len(drivers) > 0:
-                        telemetry['driverCarName'] = drivers[0].get('CarScreenName', car_name)
-                        telemetry['carPath'] = drivers[0].get('CarPath', '')
-                        
-                    logger.debug(f"Added session info to telemetry: {telemetry['trackDisplayName']}")
-                except Exception as e:
-                    logger.debug(f"Could not add session info to telemetry: {e}")
-                    # Fallback values
-                    telemetry['trackDisplayName'] = track_name
-                    telemetry['driverCarName'] = car_name
-            else:
-                # Fallback values when no session info available
-                telemetry['trackDisplayName'] = track_name
-                telemetry['driverCarName'] = car_name
-            
-            # Send telemetry to coaching server for AI processing
-            await self.send_to_coaching_server(telemetry)
-            
-            # Remove any coaching-related fields from telemetry before sending to UI
-            # Telemetry should be pure car/track data only
-            telemetry_clean = {k: v for k, v in telemetry.items() 
-                             if not k.startswith('coaching') and k not in ['secondaryMessages', 'improvementPotential', 'userProfile']}
-            
-            # Use clean telemetry for the rest of the function
-            telemetry = telemetry_clean
-            # Note: Tire temperature collection removed - iRacing doesn't provide reliable
-            # tire temperature data during racing through iRSDK
-            
-            # Get tire pressures
-            tire_pressure_mapping = {
-                'tirePressureLF': 'LFTirePres',
-                'tirePressureRF': 'RFTirePres',
-                'tirePressureLR': 'LRTirePres', 
-                'tirePressureRR': 'RRTirePres'
-            }
-            
-            for display_name, irsdk_key in tire_pressure_mapping.items():
-                pressure = self.safe_get_telemetry(irsdk_key)
-                if pressure is not None:
-                    telemetry[display_name] = pressure
-                    data_count += 1
-            
-            # Note: Brake temperature collection removed - iRacing doesn't provide reliable
-            # brake temperature data during racing through iRSDK
-            
-            # Return the completed telemetry data
-            if data_count > 0:
-                logger.debug(f"✅ Returning telemetry with {data_count} fields")
-                return telemetry
-            else:
-                logger.debug("❌ No telemetry data available")
+            # Get pure telemetry data
+            telemetry = self.get_telemetry_data_clean()
+            if not telemetry:
                 return None
+            
+            # Get session data
+            session_data = self.get_session_data()
+            
+            # Get driver data  
+            driver_data = self.get_driver_data()
+            
+            # Combine all data for the complete telemetry package
+            combined_data = {
+                **telemetry,
+                **session_data,
+                **driver_data
+            }
+            
+            # Log the session info being sent (this should show real data now)
+            logger.debug(f"Session info from telemetry: track='{combined_data.get('trackName', 'Unknown')}', car='{combined_data.get('carName', 'Unknown')}'")
+            
+            return combined_data
                 
         except Exception as e:
-            logger.error(f"Error getting telemetry data: {e}")
+            logger.error(f"Error getting combined telemetry data: {e}")
             return None
 
     async def telemetry_loop(self):
@@ -961,7 +1099,32 @@ class GT3TelemetryServer:
                 if current_time - last_session_info_time >= session_info_update_interval:
                     session_info = self.get_session_info()
                     if session_info:
+                        # Check if session has changed (reset cache if needed)
+                        old_track = self.last_session_info.get('WeekendInfo', {}).get('TrackDisplayName', '') if self.last_session_info else ''
+                        new_track = session_info.get('WeekendInfo', {}).get('TrackDisplayName', '')
+                        
+                        # Only reset cache if we're changing from one real track to another real track
+                        # Don't reset when going from empty/placeholder to real track
+                        if (old_track != new_track and 
+                            old_track not in ['', 'iRacing Track'] and 
+                            new_track not in ['iRacing Track', '']):
+                            logger.info(f"🔄 Session change detected: '{old_track}' → '{new_track}' - resetting cache")
+                            self._reset_session_cache()
+                        elif old_track == '' and new_track not in ['iRacing Track', '']:
+                            logger.info(f"🏁 Initial session detected: '{new_track}' - keeping existing cache")
+                        
                         self.last_session_info = session_info
+                        
+                        # Update session info with real-time car name from telemetry
+                        real_car_name = self.safe_get_telemetry('CarScreenName')
+                        if real_car_name and real_car_name not in ['GT3 Car', 'Race Car', '']:
+                            # Update the DriverInfo with real car name
+                            if 'DriverInfo' in self.last_session_info and 'Drivers' in self.last_session_info['DriverInfo']:
+                                drivers = self.last_session_info['DriverInfo']['Drivers']
+                                if drivers and len(drivers) > 0:
+                                    old_name = drivers[0].get('CarScreenName', 'Unknown')
+                                    drivers[0]['CarScreenName'] = real_car_name
+                                    logger.info(f"✅ Updated session info car name: '{old_name}' → '{real_car_name}'")
                         
                         # Print the ENTIRE last_session_info object for debugging
                         logger.info(f"🔍 SESSION DEBUG - COMPLETE last_session_info object:")
@@ -990,12 +1153,22 @@ class GT3TelemetryServer:
                         else:
                             logger.info(f"❌ NO TRACK DATA: No session info available")
                         
-                        logger.debug(f"🔄 Updated session info")
+                        # Broadcast updated session info to all UI clients
+                        await self.broadcast_to_clients({
+                            "type": "SessionInfo",
+                            "data": self.last_session_info
+                        })
+                        
+                        logger.debug(f"🔄 Updated and broadcast session info to UI clients")
                     else:
                         logger.warning(f"❌ No session info returned from get_session_info()")
                     last_session_info_time = current_time
                     
                 telemetry = await self.get_telemetry_data()
+                
+                # Always try to send to coaching server, even if telemetry is None
+                # The coaching server can handle this and update session state
+                await self.send_to_coaching_server(telemetry)
                 
                 if telemetry:
                     # Add connection status to telemetry data
@@ -1046,9 +1219,58 @@ class GT3TelemetryServer:
 
     async def send_to_coaching_server(self, telemetry_data):
         """Send telemetry data to coaching server for AI processing"""
-        # For now, we'll let the coaching server connect directly to us
-        # This method is kept for future enhancements
-        pass
+        try:
+            # Connect to coaching server if not connected
+            if self.coaching_server_ws is None:
+                import websockets
+                try:
+                    # Connect to coaching server's telemetry endpoint
+                    logger.info("🔄 Attempting to connect to coaching server at ws://localhost:8083...")
+                    self.coaching_server_ws = await websockets.connect("ws://localhost:8083")
+                    logger.info("📤 ✅ SUCCESS! Connected to coaching server for telemetry data")
+                except Exception as e:
+                    logger.error(f"❌ FAILED to connect to coaching server: {e}")
+                    logger.error(f"❌ Make sure coaching server is running on port 8083")
+                    return
+            
+            # Send telemetry data to coaching server
+            message = {
+                "type": "telemetry_data",
+                "data": telemetry_data,
+                "timestamp": telemetry_data.get('sessionTime', 0)
+            }
+            
+            await self.coaching_server_ws.send(json.dumps(message))
+            logger.info("📤 Sent telemetry data to coaching server")
+            
+        except Exception as e:
+            logger.error(f"❌ Error sending to coaching server: {e}")
+            # Reset connection on error
+            self.coaching_server_ws = None
+
+    def _cache_valid_session_info(self, track_name: str, car_name: str):
+        """Cache valid session info to avoid re-extraction"""
+        if track_name and track_name not in ['Unknown Track', 'iRacing Track', '']:
+            if not self._cached_track_name or self._cached_track_name != track_name:
+                self._cached_track_name = track_name
+                logger.info(f"🔒 CACHED track name: '{track_name}'")
+        
+        if car_name and car_name not in ['Unknown Car', 'GT3 Car', 'Race Car', '']:
+            if not self._cached_car_name or self._cached_car_name != car_name:
+                self._cached_car_name = car_name
+                logger.info(f"🔒 CACHED car name: '{car_name}'")
+        
+        # Mark cache as valid if we have both
+        if self._cached_track_name and self._cached_car_name:
+            self._session_cache_valid = True
+            logger.info(f"✅ SESSION CACHE COMPLETE: Track='{self._cached_track_name}', Car='{self._cached_car_name}'")
+    
+    def _get_cached_or_extract_names(self, telemetry: Dict[str, Any]) -> tuple:
+        """Get cached session info or extract if not cached - DEPRECATED: Use get_session_data() and get_driver_data()"""
+        # For backward compatibility only
+        session_data = self.get_session_data()
+        driver_data = self.get_driver_data()
+        return session_data['trackName'], driver_data['carName']
 
 def main():
     server = GT3TelemetryServer()

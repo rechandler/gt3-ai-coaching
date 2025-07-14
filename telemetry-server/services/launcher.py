@@ -29,8 +29,8 @@ from typing import List
 import multiprocessing
 
 # Import our services
-from telemetry_service import TelemetryService
-from coaching_data_service import CoachingDataService
+from .telemetry_service import TelemetryService
+from .coaching_data_service import CoachingDataService
 
 logger = logging.getLogger(__name__)
 

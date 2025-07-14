@@ -149,15 +149,19 @@ class CoachingDataService:
                 # Transform telemetry to coaching agent format
                 coaching_telemetry = self._transform_telemetry_for_coaching(telemetry_data)
                 
-                # Process through coaching agent
+                # Process through coaching agent (this may generate messages)
                 await self.coaching_agent.process_telemetry(coaching_telemetry)
                 
-                # Check for new coaching messages
+                # Check for new coaching messages and send to UI
                 await self._check_for_coaching_messages()
                 
                 # Add coaching agent stats to the data
-                coaching_stats = self.coaching_agent.get_stats()
-                enhanced_data['coaching_stats'] = coaching_stats
+                try:
+                    coaching_stats = self.coaching_agent.get_stats()
+                    enhanced_data['coaching_stats'] = coaching_stats
+                except Exception as e:
+                    logger.debug(f"Could not get coaching stats: {e}")
+                    enhanced_data['coaching_stats'] = {"status": "active"}
                 
             except Exception as e:
                 logger.error(f"Error processing telemetry with coaching agent: {e}")
@@ -174,19 +178,21 @@ class CoachingDataService:
             message = await self.coaching_agent.message_queue.get_next_message()
             
             if message:
-                # Format message for UI
+                # Format message for UI - using the format expected by React overlay
                 coaching_message = {
-                    "type": "coaching_message",
+                    "type": "coaching",
+                    "id": f"{int(message.timestamp * 1000)}_{message.category}",
                     "data": {
-                        "content": message.content,
+                        "message": message.content,
                         "category": message.category,
-                        "priority": message.priority.name,
+                        "priority": self._map_priority_to_number(message.priority),
+                        "confidence": int(message.confidence * 100),
                         "source": message.source,
-                        "confidence": message.confidence,
                         "context": message.context,
-                        "timestamp": message.timestamp
+                        "secondary_messages": [],
+                        "improvement_potential": None
                     },
-                    "timestamp": time.time()
+                    "timestamp": message.timestamp
                 }
                 
                 # Send to UI clients
@@ -547,8 +553,11 @@ class CoachingDataService:
                 # Set coaching mode
                 mode = data.get("mode", "intermediate")
                 if self.coaching_agent and self.coaching_agent_active:
-                    from hybrid_coach import CoachingMode
                     try:
+                        # Import here to avoid module-level import issues
+                        sys.path.insert(0, coaching_agent_path)
+                        from hybrid_coach import CoachingMode
+                        
                         coaching_mode = CoachingMode(mode)
                         self.coaching_agent.set_coaching_mode(coaching_mode)
                         
@@ -560,6 +569,12 @@ class CoachingDataService:
                         await websocket.send(json.dumps({
                             "type": "error",
                             "data": {"message": f"Invalid coaching mode: {mode}"}
+                        }))
+                    except Exception as e:
+                        logger.error(f"Error setting coaching mode: {e}")
+                        await websocket.send(json.dumps({
+                            "type": "error", 
+                            "data": {"message": f"Failed to set coaching mode: {str(e)}"}
                         }))
                 else:
                     await websocket.send(json.dumps({
@@ -622,9 +637,6 @@ class CoachingDataService:
                               f"Active Session: {'✅' if self.session_state.is_active else '❌'}")
                     last_log_time = current_time
                 
-                # Check for coaching messages more frequently
-                await self._check_for_coaching_messages()
-                
                 await asyncio.sleep(5)  # Check every 5 seconds
                 
             except Exception as e:
@@ -656,8 +668,20 @@ class CoachingDataService:
             ui_server,
             self.connect_to_telemetry_stream(),
             self.connect_to_session_stream(),
+            self.coaching_message_processor(),
             self.status_monitor()
         )
+    
+    async def coaching_message_processor(self):
+        """Background task to continuously check for coaching messages"""
+        while True:
+            try:
+                if self.coaching_agent and self.coaching_agent_active:
+                    await self._check_for_coaching_messages()
+                await asyncio.sleep(0.2)  # Check every 200ms for responsive coaching
+            except Exception as e:
+                logger.error(f"Error in coaching message processor: {e}")
+                await asyncio.sleep(1)
 
 def main():
     # Setup logging

@@ -19,7 +19,7 @@ export const useIRacingTelemetry = () => {
       }
 
       try {
-        telemetryWs.current = new WebSocket("ws://localhost:8081");
+        telemetryWs.current = new WebSocket("ws://localhost:8082");
 
         telemetryWs.current.onopen = () => {
           console.log("Connected to iRacing telemetry server");
@@ -31,19 +31,19 @@ export const useIRacingTelemetry = () => {
             const message = JSON.parse(event.data);
 
             // Handle different message types
-            if (message.type === "Telemetry" && message.data) {
+            if ((message.type === "Telemetry" || message.type === "telemetry") && message.data) {
               setTelemetryData(message.data);
               setIsConnected(
-                message.isConnected || message.data.isConnected || false
+                message.isConnected || message.data.isConnected || true // Default to true if telemetry data is received
               );
-            } else if (message.type === "Connected") {
-              setIsConnected(message.isConnected || false);
-            } else if (message.type === "Disconnected") {
+            } else if (message.type === "Connected" || message.type === "connected") {
+              setIsConnected(message.isConnected !== false); // Default to true unless explicitly false
+            } else if (message.type === "Disconnected" || message.type === "disconnected") {
               setIsConnected(false);
             } else {
               // For backward compatibility, treat as direct telemetry data
               setTelemetryData(message);
-              setIsConnected(message.isConnected || false);
+              setIsConnected(message.isConnected !== false); // Default to true unless explicitly false
             }
           } catch (error) {
             console.error("Error parsing telemetry data:", error);

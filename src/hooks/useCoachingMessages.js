@@ -123,6 +123,10 @@ export const useCoachingMessages = () => {
 
                 return updated;
               });
+            } else if (message.type === "sessionInfo" && message.data) {
+              // Handle session info messages from coaching data service
+              console.log("Received session info:", message.data);
+              setSessionInfo(message.data);
             } else if (message.type === "session_info" && message.data.session_info) {
               // Handle session-info-only messages
               console.log("Received session info update:", message.data.session_info);

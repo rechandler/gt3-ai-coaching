@@ -246,19 +246,6 @@ class CoachingDataService:
             transformed['lap_completed'] = True
             
         return transformed
-        
-        # Service state
-        self.session_state = SessionState()
-        self.telemetry_connected = False
-        self.session_connected = False
-        
-        # Data storage
-        self.latest_telemetry = {}
-        self.latest_session_data = {}
-        
-        # Connection objects
-        self.telemetry_websocket = None
-        self.session_websocket = None
     
     # =============================================================================
     # TELEMETRY SERVICE CONNECTION
@@ -329,6 +316,9 @@ class CoachingDataService:
                 telemetry_data = data.get("data", {})
                 self.latest_telemetry = telemetry_data
                 
+                # Debug logging
+                logger.debug(f"📊 Processing telemetry: Speed={telemetry_data.get('speed', 'N/A')}, UI clients={len(self.ui_clients)}")
+                
                 # Process telemetry for coaching insights
                 processed_data = await self.process_telemetry(telemetry_data)
                 
@@ -338,6 +328,9 @@ class CoachingDataService:
                     "data": processed_data,
                     "timestamp": time.time()
                 })
+                
+                # Debug: confirm forwarding
+                logger.debug(f"📊 Forwarded telemetry to {len(self.ui_clients)} UI clients")
                 
         except Exception as e:
             logger.error(f"Error handling telemetry message: {e}")
@@ -397,6 +390,9 @@ class CoachingDataService:
             processed['sessionActive'] = self.session_state.is_active
             processed['sessionTrack'] = self.session_state.track_name
             processed['sessionCar'] = self.session_state.car_name
+            
+            # Add connection status for frontend
+            processed['isConnected'] = self.telemetry_connected and self.session_connected
             
             # Process through coaching agent if available
             if self.coaching_agent and self.coaching_agent_active:

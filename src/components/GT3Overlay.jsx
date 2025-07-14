@@ -1,154 +1,21 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import {
-  Settings,
-  X,
-  Move,
-  Eye,
-  EyeOff,
-  RotateCcw,
-  Wifi,
-  WifiOff,
-  Cloud,
-  CloudOff,
-  User,
-} from "lucide-react";
+import React, { useState, useEffect } from "react";
 import UpdateNotification from "./UpdateNotification";
+import DraggableWidget from "./DraggableWidget";
+import StatusIndicators from "./StatusIndicators";
+import SettingsPanel from "./SettingsPanel";
+import {
+  DeltaTimeWidget,
+  FuelWidget,
+  SpeedGearWidget,
+  SessionInfoWidget,
+  UserProfileWidget,
+  CoachingWidget,
+} from "./widgets";
 import { useAuth } from "../firebase/auth";
 import { useSessionHistory } from "../firebase/sessionHistory";
 import { useIRacingTelemetry } from "../hooks/useIRacingTelemetry";
 import { useCoachingMessages } from "../hooks/useCoachingMessages";
 import { useWidgetLayout } from "../hooks/useWidgetLayout";
-
-const DraggableWidget = ({
-  id,
-  title,
-  children,
-  position,
-  onPositionChange,
-  isVisible,
-  onToggleVisibility,
-}) => {
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const widgetRef = useRef(null);
-
-  const startDrag = useCallback(
-    (e) => {
-      console.log(
-        "Mouse down on header for widget:",
-        id,
-        "Target:",
-        e.target.tagName
-      );
-
-      setIsDragging(true);
-      setDragStart({
-        x: e.clientX - position.x,
-        y: e.clientY - position.y,
-      });
-
-      document.body.style.userSelect = "none";
-      e.preventDefault();
-    },
-    [position.x, position.y, id]
-  );
-
-  const onDrag = useCallback(
-    (e) => {
-      if (!isDragging) return;
-
-      console.log("Dragging widget:", id);
-
-      const newX = e.clientX - dragStart.x;
-      const newY = e.clientY - dragStart.y;
-
-      onPositionChange(id, { x: newX, y: newY });
-    },
-    [isDragging, dragStart.x, dragStart.y, onPositionChange, id]
-  );
-
-  const stopDrag = useCallback(() => {
-    console.log("Stopping drag for widget:", id);
-    setIsDragging(false);
-    document.body.style.userSelect = "";
-  }, [id]);
-
-  useEffect(() => {
-    if (isDragging) {
-      document.addEventListener("mousemove", onDrag);
-      document.addEventListener("mouseup", stopDrag);
-
-      return () => {
-        document.removeEventListener("mousemove", onDrag);
-        document.removeEventListener("mouseup", stopDrag);
-      };
-    }
-  }, [isDragging, onDrag, stopDrag]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      document.body.style.userSelect = "";
-    };
-  }, []);
-
-  if (!isVisible) return null;
-
-  return (
-    <div
-      ref={widgetRef}
-      className={`fixed bg-black bg-opacity-80 backdrop-blur-sm border border-gray-600 rounded-lg shadow-lg ${
-        isDragging ? "shadow-xl scale-105" : ""
-      }`}
-      style={{
-        left: position.x,
-        top: position.y,
-        zIndex: isDragging ? 1001 : 1000,
-        minWidth: "200px",
-        transition: isDragging ? "none" : "all 0.2s",
-        pointerEvents: "auto",
-      }}
-    >
-      <div
-        className={`widget-header flex items-center justify-between p-2 bg-gray-800 rounded-t-lg transition-colors hover:bg-gray-700 ${
-          isDragging ? "cursor-grabbing bg-gray-700" : "cursor-grab"
-        }`}
-        onMouseDown={startDrag}
-        onMouseEnter={() => console.log("Hovering over header for widget:", id)}
-        style={{
-          userSelect: "none",
-          WebkitUserSelect: "none",
-          MozUserSelect: "none",
-          msUserSelect: "none",
-          cursor: isDragging ? "grabbing" : "grab",
-          pointerEvents: "auto",
-        }}
-      >
-        <div className="flex items-center space-x-2">
-          <Move
-            size={16}
-            className={`transition-colors ${
-              isDragging ? "text-blue-400" : "text-gray-400 hover:text-gray-200"
-            }`}
-          />
-          <span className="text-sm font-medium text-white">{title}</span>
-        </div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleVisibility(id);
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-          className="text-gray-400 hover:text-white transition-colors hover:bg-gray-600 rounded p-1"
-          style={{ cursor: "pointer" }}
-        >
-          <X size={16} />
-        </button>
-      </div>
-      <div className="widget-content p-3">{children}</div>
-    </div>
-  );
-};
 
 const GT3OverlaySystem = () => {
   const { telemetryData, isConnected } = useIRacingTelemetry();
@@ -253,455 +120,29 @@ const GT3OverlaySystem = () => {
     }
   }, [coachingMessages, hasActiveSession, addCoachingMessage]);
 
-  // Note: Tire and brake temperature color functions removed since iRacing doesn't provide reliable data
-
-  // Simplified coaching message styling for better readability
-
-  const getCategoryIcon = (category) => {
-    switch (category) {
-      case "critical":
-        return "🚨";
-      case "warning":
-        return "⚠️";
-      case "technique":
-        return "🎯";
-      case "strategy":
-        return "📊";
-      case "braking":
-        return "🛑";
-      case "throttle":
-        return "⚡";
-      case "racing_line":
-        return "🏁";
-      case "baseline":
-        return "📐";
-      case "tip":
-        return "💡";
-      case "llm":
-        return "🤖";
-      default:
-        return "🧠";
-    }
-  };
-
-  const DeltaTimeWidget = () => {
-    const isInPits = telemetryData?.onPitRoad;
-    const hasDelta =
-      telemetryData?.deltaTime !== null &&
-      telemetryData?.deltaTime !== undefined;
-    const deltaSource = telemetryData?.deltaSource || "unknown";
-
-    return (
-      <div className="text-center">
-        <div
-          className={`text-4xl font-bold ${
-            isInPits
-              ? "text-gray-500"
-              : hasDelta && telemetryData.deltaTime < 0
-              ? "text-green-400"
-              : "text-red-400"
-          }`}
-        >
-          {isInPits
-            ? "PIT"
-            : hasDelta
-            ? `${
-                telemetryData.deltaTime >= 0 ? "+" : ""
-              }${telemetryData.deltaTime.toFixed(3)}`
-            : "0.000"}
-        </div>
-        <div className="text-sm text-gray-400">
-          {isInPits ? "In Pits" : "Delta Time"}
-        </div>
-        {/* Show delta source for debugging/verification */}
-        {deltaSource === "iRacing_native" && (
-          <div className="text-xs text-green-500 mt-1">iRacing Native</div>
-        )}
-        {deltaSource === "calculated_fallback" && (
-          <div className="text-xs text-yellow-500 mt-1">Calculated</div>
-        )}
-        {telemetryData?.lapBestLapTime && !isInPits && (
-          <div className="text-xs text-gray-500 mt-1">
-            Best: {telemetryData.lapBestLapTime.toFixed(3)}s
-          </div>
-        )}
-        {/* Show additional delta fields if available */}
-        {telemetryData?.lapDeltaToOptimalLap !== null &&
-          telemetryData?.lapDeltaToOptimalLap !== undefined &&
-          !isInPits && (
-            <div className="text-xs text-blue-400 mt-1">
-              Optimal: {telemetryData.lapDeltaToOptimalLap >= 0 ? "+" : ""}
-              {telemetryData.lapDeltaToOptimalLap.toFixed(3)}
-            </div>
-          )}
-      </div>
-    );
-  };
-
-  // Note: TireTempsWidget removed - iRacing doesn't provide reliable tire temperature data
-
-  const FuelWidget = () => {
-    // Calculate laps remaining more accurately
-    // We need fuel use per lap, not per hour
-    // If we have current lap time and fuel use per hour, we can estimate
-    let lapsRemaining = "--";
-
-    if (
-      telemetryData?.fuelLevel &&
-      telemetryData?.fuelUsePerHour &&
-      telemetryData?.lapLastLapTime
-    ) {
-      // Convert lap time from seconds to hours for calculation
-      const lapTimeHours = telemetryData.lapLastLapTime / 3600;
-      const fuelPerLap = telemetryData.fuelUsePerHour * lapTimeHours;
-
-      if (fuelPerLap > 0) {
-        lapsRemaining = (telemetryData.fuelLevel / fuelPerLap).toFixed(1);
-      }
-    } else if (telemetryData?.fuelLevel && telemetryData?.fuelUsePerHour) {
-      // Fallback: estimate based on 90-second laps (typical for many tracks)
-      const estimatedLapTimeHours = 90 / 3600; // 90 seconds in hours
-      const estimatedFuelPerLap =
-        telemetryData.fuelUsePerHour * estimatedLapTimeHours;
-
-      if (estimatedFuelPerLap > 0) {
-        lapsRemaining = (telemetryData.fuelLevel / estimatedFuelPerLap).toFixed(
-          1
-        );
-      }
-    }
-
-    return (
-      <div className="text-center">
-        <div className="text-2xl font-bold text-blue-400">
-          {telemetryData?.fuelLevel ? telemetryData.fuelLevel.toFixed(1) : "--"}
-        </div>
-        <div className="text-sm text-gray-400">Gallons</div>
-        <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
-          <div
-            className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${(telemetryData?.fuelLevelPct || 0) * 100}%` }}
-          />
-        </div>
-        <div className="text-xs text-gray-400 mt-1">{lapsRemaining} laps</div>
-      </div>
-    );
-  };
-
-  // Note: BrakeTempsWidget removed - iRacing doesn't provide reliable brake temperature data
-
-  const CoachingWidget = () => {
-    const MESSAGE_DISPLAY_TIME = 8000; // 8 seconds per message for better readability
-    const MAX_MESSAGES = 4; // Reduced to 4 messages for better UI
-
-    // Mark messages as no longer new after a brief period
-    useEffect(() => {
-      const timer = setTimeout(() => {
-        markMessagesAsRead();
-      }, 1000); // Give a bit more time for the "NEW" badge
-
-      return () => clearTimeout(timer);
-    }, [coachingMessages.length, markMessagesAsRead]);
-
-    return (
-      <div className="bg-gray-900 bg-opacity-95 rounded-lg p-3 min-h-16 w-96 border border-gray-600 shadow-xl">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center space-x-2">
-            <span className="text-sm font-medium text-blue-300">AI Coach</span>
-            <span className="text-xs">🧠</span>
-            {isCoachingConnected ? (
-              <span className="text-xs text-green-400">●</span>
-            ) : (
-              <span className="text-xs text-red-400">●</span>
-            )}
-          </div>
-          <div className="flex items-center space-x-2">
-            {coachingMessages.length > 0 && (
-              <button
-                onClick={clearMessages}
-                className="text-xs text-gray-400 hover:text-red-400 px-2 py-1 rounded hover:bg-gray-700 transition-colors"
-                title="Clear all messages"
-              >
-                Clear
-              </button>
-            )}
-            <div className="text-xs text-gray-400">Auto-expire in 8s</div>
-          </div>
-        </div>
-
-        {!isConnected || !isCoachingConnected ? (
-          <div className="text-sm text-gray-300 mt-1">
-            {!isConnected
-              ? "Waiting for iRacing connection..."
-              : "Connecting to AI coach..."}
-          </div>
-        ) : coachingMessages.length === 0 ? (
-          <div className="text-sm text-gray-300">Analyzing your driving...</div>
-        ) : (
-          <div className="space-y-3 max-h-80 overflow-hidden">
-            {/* Messages sorted to show newest at top */}
-            {coachingMessages
-              .sort((a, b) => b.timestamp - a.timestamp) // Newest first
-              .slice(0, MAX_MESSAGES)
-              .map((msg, index) => {
-                const age = (Date.now() - msg.timestamp) / 1000;
-                const remainingTime = Math.max(
-                  0,
-                  MESSAGE_DISPLAY_TIME / 1000 - age
-                );
-
-                return (
-                  <div
-                    key={msg.id}
-                    className="coaching-message-container bg-gray-800 bg-opacity-60 rounded-lg px-3 py-2 border-l-4 border-blue-400 transition-all duration-300"
-                    style={{
-                      transform: msg.isNew
-                        ? "translateY(-10px)"
-                        : "translateY(0)",
-                      animationDuration: "0.4s",
-                    }}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-sm">
-                          {getCategoryIcon(msg.category)}
-                        </span>
-                        <span className="text-xs text-gray-300 bg-gray-700 px-2 py-1 rounded">
-                          P{msg.priority}
-                        </span>
-                        {msg.isNew && (
-                          <span className="text-xs bg-blue-500 text-white px-2 py-1 rounded font-medium">
-                            NEW
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-col items-end text-xs text-gray-400">
-                        <span>{msg.confidence}%</span>
-                        <span className="font-medium">
-                          {Math.ceil(remainingTime)}s
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-sm text-gray-300 leading-relaxed">
-                      {msg.message}
-                    </div>
-                    {msg.secondaryMessages &&
-                      msg.secondaryMessages.length > 0 && (
-                        <div className="mt-2 space-y-1">
-                          {msg.secondaryMessages.map((secondaryMsg, idx) => (
-                            <div
-                              key={idx}
-                              className="text-xs text-gray-400 italic pl-2 border-l-2 border-gray-600"
-                            >
-                              {typeof secondaryMsg === "string"
-                                ? secondaryMsg
-                                : secondaryMsg.message}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    {msg.improvementPotential && (
-                      <div className="text-xs text-green-400 mt-2">
-                        Potential improvement:{" "}
-                        {msg.improvementPotential.toFixed(2)}s
-                      </div>
-                    )}
-                    {/* Progress bar showing time remaining */}
-                    <div className="mt-2">
-                      <div className="w-full bg-gray-600 rounded-full h-1">
-                        <div
-                          className="bg-blue-400 h-1 rounded-full transition-all duration-500"
-                          style={{
-                            width: `${Math.max(
-                              0,
-                              (remainingTime / (MESSAGE_DISPLAY_TIME / 1000)) *
-                                100
-                            )}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const SpeedGearWidget = () => (
-    <div className="text-center">
-      <div className="text-3xl font-bold text-white">
-        {telemetryData?.speed ? telemetryData.speed.toFixed(0) : "--"}
-      </div>
-      <div className="text-sm text-gray-400">MPH</div>
-      <div className="text-xl font-bold text-orange-400 mt-1">
-        {telemetryData?.gear || "-"}
-      </div>
-      <div className="text-xs text-gray-400">Gear</div>
-    </div>
-  );
-
-  const SessionInfoWidget = () => (
-    <div className="space-y-2">
-      <div className="text-sm font-medium text-white">
-        {sessionInfo?.car_name || "No Car"}
-      </div>
-      <div className="text-xs text-gray-400">
-        {sessionInfo?.track_name || "No Track"}
-      </div>
-      <div className="flex justify-between text-xs">
-        <span className="text-gray-400">Lap:</span>
-        <span className="text-white">{telemetryData?.lap || "--"}</span>
-      </div>
-      <div className="flex justify-between text-xs">
-        <span className="text-gray-400">Position:</span>
-        <span className="text-white">P{telemetryData?.position || "--"}</span>
-      </div>
-      {sessionInfo && (
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-400">Session:</span>
-          <span
-            className={`text-white ${
-              sessionInfo.session_active ? "text-green-400" : "text-gray-400"
-            }`}
-          >
-            {sessionInfo.session_active ? "Active" : "Inactive"}
-          </span>
-        </div>
-      )}
-    </div>
-  );
-
-  const UserProfileWidget = () => {
-    // User profile data will now come from the coaching server
-    // For now, show a placeholder
-    return (
-      <div className="space-y-2">
-        <div className="text-sm font-medium text-white">Driver Profile</div>
-        <div className="text-xs space-y-1">
-          <div className="flex justify-between">
-            <span className="text-gray-400">Status:</span>
-            <span className="text-white">
-              {isCoachingConnected ? "AI Active" : "Offline"}
-            </span>
-          </div>
-          <div className="text-xs text-gray-400">
-            Profile data will be available via coaching server
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-transparent">
       <div className="fixed top-4 right-4 z-50 flex items-center space-x-2">
-        <div
-          className={`flex items-center space-x-2 px-3 py-1 rounded-full ${
-            isConnected ? "bg-green-600" : "bg-red-600"
-          }`}
-        >
-          {isConnected ? <Wifi size={16} /> : <WifiOff size={16} />}
-          <span className="text-sm text-white">
-            {isConnected ? "iRacing Connected" : "iRacing Disconnected"}
-          </span>
-        </div>
+        <StatusIndicators
+          isConnected={isConnected}
+          isAuthenticated={isAuthenticated}
+          hasActiveSession={hasActiveSession}
+        />
 
-        <div
-          className={`flex items-center space-x-2 px-3 py-1 rounded-full ${
-            isAuthenticated ? "bg-blue-600" : "bg-gray-600"
-          }`}
-        >
-          {isAuthenticated ? <Cloud size={16} /> : <CloudOff size={16} />}
-          <span className="text-sm text-white">
-            {isAuthenticated
-              ? hasActiveSession
-                ? "Session Recording"
-                : "Cloud Ready"
-              : "Cloud Offline"}
-          </span>
-        </div>
-
-        <button
-          onClick={() => setShowSettings(!showSettings)}
-          className="bg-gray-800 bg-opacity-80 backdrop-blur-sm border border-gray-600 rounded-lg p-2 text-white hover:bg-gray-700 transition-colors"
-        >
-          <Settings size={20} />
-        </button>
+        <SettingsPanel
+          showSettings={showSettings}
+          setShowSettings={setShowSettings}
+          widgetVisibility={widgetVisibility}
+          handleToggleVisibility={handleToggleVisibility}
+          resetPositions={resetPositions}
+          isAuthenticated={isAuthenticated}
+          isAnonymous={isAnonymous}
+          sessions={sessions}
+          hasActiveSession={hasActiveSession}
+          logout={logout}
+          signInAnonymous={signInAnonymous}
+        />
       </div>
-
-      {showSettings && (
-        <div className="fixed top-16 right-4 z-50 bg-gray-800 bg-opacity-90 backdrop-blur-sm border border-gray-600 rounded-lg p-4 min-w-64">
-          <h3 className="text-lg font-bold text-white mb-4">Widget Settings</h3>
-          <div className="space-y-3">
-            {Object.entries(widgetVisibility).map(([widgetId, isVisible]) => (
-              <div key={widgetId} className="flex items-center justify-between">
-                <span className="text-sm text-white capitalize">
-                  {widgetId.replace(/([A-Z])/g, " $1").trim()}
-                </span>
-                <button
-                  onClick={() => handleToggleVisibility(widgetId)}
-                  className={`p-1 rounded transition-colors ${
-                    isVisible
-                      ? "text-green-400 hover:text-green-300"
-                      : "text-gray-400 hover:text-gray-300"
-                  }`}
-                >
-                  {isVisible ? <Eye size={16} /> : <EyeOff size={16} />}
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 pt-4 border-t border-gray-600">
-            <button
-              onClick={resetPositions}
-              className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded transition-colors mb-3"
-            >
-              <RotateCcw size={16} />
-              <span>Reset Positions</span>
-            </button>
-
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-white">Cloud Sync</div>
-              {isAuthenticated ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-400">Status:</span>
-                    <span className="text-green-400">
-                      {isAnonymous ? "Anonymous User" : "Logged In"}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-400">Sessions:</span>
-                    <span className="text-white">{sessions.length}</span>
-                  </div>
-                  {hasActiveSession && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-400">Recording:</span>
-                      <span className="text-green-400">Active</span>
-                    </div>
-                  )}
-                  <button
-                    onClick={logout}
-                    className="w-full bg-red-600 hover:bg-red-700 text-white py-1 px-3 rounded text-xs transition-colors"
-                  >
-                    Sign Out
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={signInAnonymous}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-1 px-3 rounded text-xs transition-colors"
-                >
-                  Enable Cloud Sync
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       <DraggableWidget
         id="deltaTime"
@@ -711,10 +152,8 @@ const GT3OverlaySystem = () => {
         isVisible={widgetVisibility.deltaTime}
         onToggleVisibility={handleToggleVisibility}
       >
-        <DeltaTimeWidget />
+        <DeltaTimeWidget telemetryData={telemetryData} />
       </DraggableWidget>
-
-      {/* Note: Tire and brake temperature widgets removed - iRacing doesn't provide reliable data */}
 
       <DraggableWidget
         id="fuel"
@@ -724,7 +163,7 @@ const GT3OverlaySystem = () => {
         isVisible={widgetVisibility.fuel}
         onToggleVisibility={handleToggleVisibility}
       >
-        <FuelWidget />
+        <FuelWidget telemetryData={telemetryData} />
       </DraggableWidget>
 
       <DraggableWidget
@@ -735,7 +174,13 @@ const GT3OverlaySystem = () => {
         isVisible={widgetVisibility.coaching}
         onToggleVisibility={handleToggleVisibility}
       >
-        <CoachingWidget />
+        <CoachingWidget
+          coachingMessages={coachingMessages}
+          clearMessages={clearMessages}
+          markMessagesAsRead={markMessagesAsRead}
+          isCoachingConnected={isCoachingConnected}
+          isConnected={isConnected}
+        />
       </DraggableWidget>
 
       <DraggableWidget
@@ -746,7 +191,7 @@ const GT3OverlaySystem = () => {
         isVisible={widgetVisibility.speedGear}
         onToggleVisibility={handleToggleVisibility}
       >
-        <SpeedGearWidget />
+        <SpeedGearWidget telemetryData={telemetryData} />
       </DraggableWidget>
 
       <DraggableWidget
@@ -757,7 +202,10 @@ const GT3OverlaySystem = () => {
         isVisible={widgetVisibility.sessionInfo}
         onToggleVisibility={handleToggleVisibility}
       >
-        <SessionInfoWidget />
+        <SessionInfoWidget
+          telemetryData={telemetryData}
+          sessionInfo={sessionInfo}
+        />
       </DraggableWidget>
 
       <DraggableWidget
@@ -768,7 +216,7 @@ const GT3OverlaySystem = () => {
         isVisible={widgetVisibility.userProfile}
         onToggleVisibility={handleToggleVisibility}
       >
-        <UserProfileWidget />
+        <UserProfileWidget isCoachingConnected={isCoachingConnected} />
       </DraggableWidget>
 
       <UpdateNotification />

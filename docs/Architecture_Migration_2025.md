@@ -7,12 +7,14 @@
 The GT3 AI Coaching system has been migrated from a monolithic architecture to a modular, service-based architecture:
 
 #### Before (Removed)
+
 - `python-server/` - Monolithic directory containing:
   - `telemetry-server.py` - Single large file handling telemetry + UI + coaching
   - `coaching-server.py` - Separate coaching server
   - Various AI coaching implementations
 
 #### After (Current)
+
 - `telemetry-server/services/` - Modular service architecture:
   - `telemetry_service.py` - Pure iRacing SDK interface
   - `coaching_data_service.py` - Data processing + coaching integration
@@ -26,7 +28,7 @@ The GT3 AI Coaching system has been migrated from a monolithic architecture to a
 ### Benefits of New Architecture
 
 1. **Separation of Concerns**: Each service has a single, clear responsibility
-2. **Modularity**: Services can be developed, tested, and deployed independently  
+2. **Modularity**: Services can be developed, tested, and deployed independently
 3. **Scalability**: Services can be distributed across multiple machines
 4. **Reliability**: If one service fails, others continue running
 5. **Debugging**: Much easier to isolate and fix issues
@@ -41,7 +43,7 @@ iRacing SDK → Telemetry Service → Coaching Data Service (+ Hybrid Agent) →
 ### Port Configuration
 
 - **9001**: Telemetry data stream (60Hz)
-- **9002**: Session/driver data stream (5s intervals)  
+- **9002**: Session/driver data stream (5s intervals)
 - **8082**: UI interface + coaching messages
 
 ### Legacy Documentation Preserved

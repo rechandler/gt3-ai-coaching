@@ -13,11 +13,13 @@ iRacing SDK → Telemetry Service → Coaching Data Service (+ AI Coach) → Rea
 ## Features
 
 ### Core Telemetry Services
+
 - **Real-time telemetry streaming** from iRacing SDK
 - **Session and driver data** collection
 - **Modular service architecture** for reliability
 
 ### AI Coaching Integration
+
 - **Hybrid Coaching Agent** processes telemetry in real-time
 - **Local ML patterns** provide instant feedback
 - **Remote AI coaching** for sophisticated analysis
@@ -76,16 +78,18 @@ telemetry-server/
 ### With AI Coaching (Recommended)
 
 1. **Ensure coaching agent is available**:
+
    ```bash
    # The coaching-agent directory should exist at ../coaching-agent/
    ls ../coaching-agent/hybrid_coach.py
    ```
 
 2. **Start with coaching integration**:
+
    ```bash
    # Windows
    start-telemetry-with-coaching.bat
-   
+
    # Or manually
    cd telemetry-server
    pip install -r requirements.txt
@@ -117,12 +121,14 @@ python test_coaching_integration.py
 ## Service Endpoints
 
 ### Telemetry Service
+
 - **Telemetry Stream**: `ws://localhost:9001`
   - Real-time telemetry data (60Hz)
 - **Session Stream**: `ws://localhost:9002`
   - Session/driver information (5s intervals)
 
-### Coaching Data Service  
+### Coaching Data Service
+
 - **UI Interface**: `ws://localhost:8082`
   - Processed telemetry data
   - Coaching messages
@@ -138,7 +144,7 @@ The coaching data service delivers AI coaching messages in this format:
   "data": {
     "content": "Brake earlier for turn 1 - you're 100ms late",
     "category": "braking",
-    "priority": "HIGH", 
+    "priority": "HIGH",
     "source": "local_ml",
     "confidence": 0.85,
     "context": "corner_entry",
@@ -153,6 +159,7 @@ The coaching data service delivers AI coaching messages in this format:
 Send these commands to the UI interface for coaching control:
 
 ### Get Status
+
 ```json
 {
   "type": "getStatus"
@@ -160,14 +167,16 @@ Send these commands to the UI interface for coaching control:
 ```
 
 ### Set Coaching Mode
+
 ```json
 {
   "type": "setCoachingMode",
-  "mode": "intermediate"  // beginner, intermediate, advanced, race
+  "mode": "intermediate" // beginner, intermediate, advanced, race
 }
 ```
 
 ### Get Coaching Statistics
+
 ```json
 {
   "type": "getCoachingStats"
@@ -192,7 +201,7 @@ Modify service parameters in `launcher.py`:
 telemetry_port=9001  # Telemetry stream
 session_port=9002    # Session stream
 
-# Coaching Data Service port  
+# Coaching Data Service port
 ui_port=8082         # UI interface
 ```
 
@@ -201,10 +210,12 @@ ui_port=8082         # UI interface
 ### Common Issues
 
 1. **Coaching agent not available**:
+
    - Ensure `../coaching-agent/` directory exists
    - Install coaching dependencies: `pip install -r ../coaching-agent/requirements.txt`
 
 2. **No coaching messages**:
+
    - Check if iRacing is running and generating telemetry
    - Verify coaching agent is active in status response
    - Some coaching triggers require specific driving patterns
@@ -226,6 +237,7 @@ logging.basicConfig(level=logging.DEBUG)
 ### Service Status
 
 Monitor service health:
+
 - Service logs show connection status every 30 seconds
 - UI status command shows all service states
 - Integration test validates full pipeline
@@ -233,17 +245,20 @@ Monitor service health:
 ## Architecture Benefits
 
 ### Modular Design
+
 - **Independent services** can be restarted separately
 - **Focused responsibilities** make debugging easier
 - **Scalable architecture** allows adding new services
 
 ### AI Integration
+
 - **Real-time processing** provides immediate coaching
 - **Intelligent message filtering** prevents information overload
 - **Adaptive coaching** adjusts to driver skill and preferences
 - **Local + Remote AI** optimizes performance and cost
 
 ### Development Features
+
 - **Mock iRacing SDK** enables development without simulator
 - **Integration testing** validates end-to-end functionality
 - **Comprehensive logging** aids debugging and monitoring

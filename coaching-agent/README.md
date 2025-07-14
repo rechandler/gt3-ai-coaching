@@ -28,6 +28,7 @@ coaching-agent/
 ## Features
 
 ### Local ML Coach
+
 - Real-time pattern detection
 - Braking analysis
 - Cornering technique assessment
@@ -35,6 +36,7 @@ coaching-agent/
 - Lightweight heuristic-based coaching
 
 ### Remote AI Coach
+
 - Natural language coaching messages
 - Contextual situation analysis
 - Strategic advice
@@ -42,18 +44,21 @@ coaching-agent/
 - Sophisticated prompt engineering
 
 ### Message Queue System
+
 - Priority-based message delivery
 - Duplicate message filtering
 - Category-specific cooldowns
 - Configurable delivery rates
 
 ### Telemetry Analysis
+
 - Motion calculations (G-forces)
 - Sector performance analysis
 - Corner detection and analysis
 - Performance trend tracking
 
 ### Session Management
+
 - Persistent session storage
 - Performance metrics tracking
 - Progress monitoring
@@ -62,16 +67,19 @@ coaching-agent/
 ## Installation
 
 1. Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
 2. Set up OpenAI API key (optional):
+
 ```bash
 export OPENAI_API_KEY="your-api-key-here"
 ```
 
 3. Create configuration file:
+
 ```bash
 python config.py
 ```
@@ -81,12 +89,14 @@ python config.py
 The system uses a hierarchical configuration system with these main sections:
 
 ### Coaching Modes
+
 - **Beginner**: More frequent, encouraging messages
 - **Intermediate**: Balanced technical advice
 - **Advanced**: Detailed, technical feedback
 - **Race**: Minimal, critical-only messages
 
 ### Local Config
+
 ```json
 {
   "local_config": {
@@ -98,6 +108,7 @@ The system uses a hierarchical configuration system with these main sections:
 ```
 
 ### Remote Config
+
 ```json
 {
   "remote_config": {
@@ -111,21 +122,25 @@ The system uses a hierarchical configuration system with these main sections:
 ## Usage
 
 ### Basic Usage
+
 ```bash
 python main.py
 ```
 
 ### With Simulation
+
 ```bash
 python main.py --simulate
 ```
 
 ### Production Mode
+
 ```bash
 python main.py --environment production
 ```
 
 ### Custom Configuration
+
 ```bash
 python main.py --config my_config.json
 ```
@@ -133,6 +148,7 @@ python main.py --config my_config.json
 ## API Integration
 
 ### Processing Telemetry
+
 ```python
 from hybrid_coach import HybridCoachingAgent
 
@@ -152,6 +168,7 @@ await agent.process_telemetry(telemetry_data)
 ```
 
 ### Getting Statistics
+
 ```python
 stats = agent.get_stats()
 print(f"Messages delivered: {stats['total_messages']}")
@@ -180,18 +197,21 @@ The hybrid system intelligently decides when to use local vs. remote coaching:
 ## Performance Features
 
 ### Pattern Detection
+
 - Late/early braking detection
 - Cornering technique analysis
 - Throttle application patterns
 - Consistency monitoring
 
 ### Analysis Capabilities
+
 - G-force calculations
 - Sector time analysis
 - Corner performance assessment
 - Racing line evaluation
 
 ### Session Tracking
+
 - Lap time progression
 - Performance metrics
 - Improvement tracking
@@ -200,11 +220,13 @@ The hybrid system intelligently decides when to use local vs. remote coaching:
 ## Coaching Examples
 
 ### Local ML Messages
+
 - "Brake earlier for turn 1. You're braking 100m too late."
 - "You can get on throttle earlier in turn 3."
 - "Focus on consistency - your lap times vary by 0.8s."
 
 ### AI-Generated Messages
+
 - "Your exit speed through the chicane is costing time. Try a later apex to maximize acceleration onto the back straight."
 - "Consider a more aggressive line through sector 2 - you're being too conservative in the medium-speed corners."
 
@@ -213,6 +235,7 @@ The hybrid system intelligently decides when to use local vs. remote coaching:
 The system is designed for easy extension:
 
 ### Adding New Patterns
+
 ```python
 def detect_custom_pattern(self, telemetry_data):
     # Custom pattern detection logic
@@ -220,6 +243,7 @@ def detect_custom_pattern(self, telemetry_data):
 ```
 
 ### Custom Message Templates
+
 ```python
 CUSTOM_TEMPLATES = {
     'my_category': {
@@ -229,6 +253,7 @@ CUSTOM_TEMPLATES = {
 ```
 
 ### Track-Specific Configuration
+
 ```python
 TRACK_CONFIGS['my_track'] = {
     'sector_boundaries': [0.0, 0.35, 0.70, 1.0],
@@ -285,6 +310,7 @@ await agent.process_telemetry(telemetry_data)
 4. **Missing dependencies**: Run `pip install -r requirements.txt`
 
 ### Debug Mode
+
 ```bash
 python main.py --debug --simulate
 ```

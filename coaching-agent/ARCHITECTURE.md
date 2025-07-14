@@ -7,20 +7,24 @@ The new coaching agent represents a significant advancement in AI-driven racing 
 ## Key Advantages of the Hybrid Approach
 
 ### 1. **Optimal Performance Balance**
+
 - **Local ML**: Instant response for common patterns (braking, cornering, consistency)
 - **Remote AI**: Sophisticated analysis for complex situations requiring natural language
 
 ### 2. **Cost Efficiency**
+
 - Smart decision engine minimizes API usage
 - Rate limiting prevents unexpected costs
 - Local processing handles 70-80% of coaching scenarios
 
 ### 3. **Reliability**
+
 - Works even without internet connection (local coaching only)
 - Graceful degradation when API limits are reached
 - Persistent session data survives crashes
 
 ### 4. **Personalization**
+
 - Adapts coaching style based on performance trends
 - Multiple coaching modes (beginner, intermediate, advanced, race)
 - Track-specific optimizations
@@ -70,12 +74,14 @@ The new coaching agent represents a significant advancement in AI-driven racing 
 The heart of the system is the intelligent decision engine that determines when to use local vs remote processing:
 
 ### Use Local ML When:
+
 - High confidence (>80%) from pattern detection
 - Common situations (braking, throttle, basic cornering)
 - Frequent events that need immediate response
 - API rate limits are being approached
 
 ### Use Remote AI When:
+
 - Complex strategic situations
 - Low confidence (<60%) from local analysis
 - High importance scenarios (>70% importance score)
@@ -86,18 +92,21 @@ The heart of the system is the intelligent decision engine that determines when 
 The local coach provides immediate feedback for:
 
 ### Pattern Detection
+
 - **Braking Patterns**: Late/early braking, insufficient pressure
 - **Cornering Patterns**: Racing line deviations, throttle timing
 - **Consistency Patterns**: Lap time variation, sector analysis
 - **Speed Patterns**: Straight-line efficiency, cornering speeds
 
 ### Real-time Analysis
+
 - G-force calculations
 - Sector time comparisons
 - Corner entry/exit analysis
 - Racing line evaluation
 
 ### Coaching Messages
+
 - "Brake earlier for turn 1 - you're 100ms late"
 - "You can use more throttle on the exit of turn 3"
 - "Focus on consistency - lap times vary by 0.8s"
@@ -107,18 +116,21 @@ The local coach provides immediate feedback for:
 The AI coach handles sophisticated scenarios:
 
 ### Natural Language Coaching
+
 - Contextual advice based on track, car, and situation
 - Strategic recommendations for race scenarios
 - Detailed technique explanations
 - Personalized feedback based on skill level
 
 ### Complex Analysis
+
 - Multi-factor performance assessment
 - Long-term trend analysis
 - Setup and strategy recommendations
 - Competitive positioning advice
 
 ### Example AI Messages
+
 - "Your exit speed through the chicane is limiting your straight-line performance. Try a later apex to maximize acceleration onto the back straight."
 - "Consider a more defensive line through sector 2 when following traffic - your current aggressive approach is costing time in dirty air."
 
@@ -127,12 +139,14 @@ The AI coach handles sophisticated scenarios:
 The message system prevents information overload:
 
 ### Priority System
+
 1. **Critical**: Safety concerns, immediate issues
 2. **High**: Important technique corrections
 3. **Medium**: General improvements
 4. **Low**: Informational feedback
 
 ### Smart Filtering
+
 - Duplicate message detection
 - Category-specific cooldowns
 - Contextual relevance scoring
@@ -141,18 +155,21 @@ The message system prevents information overload:
 ## Integration Benefits
 
 ### Easy Integration
+
 - WebSocket interface for real-time communication
 - JSON-based configuration
 - Modular architecture
 - Existing telemetry compatibility
 
 ### Scalability
+
 - Handles multiple simultaneous sessions
 - Configurable resource usage
 - Optional components (can disable AI)
 - Performance monitoring
 
 ### Extensibility
+
 - Custom pattern detection
 - Track-specific configurations
 - Coaching style customization
@@ -161,16 +178,19 @@ The message system prevents information overload:
 ## Performance Characteristics
 
 ### Response Times
+
 - **Local ML**: <10ms response time
 - **Remote AI**: 1-3 second response time
 - **Message Delivery**: <50ms end-to-end
 
 ### Accuracy
+
 - **Local Patterns**: 85-95% accuracy
 - **AI Coaching**: 90-95% relevance
 - **Combined System**: 90%+ user satisfaction
 
 ### Resource Usage
+
 - **CPU**: Low impact (2-5% on modern systems)
 - **Memory**: ~50MB typical usage
 - **Network**: Minimal (only for AI requests)
@@ -178,12 +198,14 @@ The message system prevents information overload:
 ## Configuration Flexibility
 
 ### Coaching Modes
+
 - **Beginner**: Frequent, encouraging feedback
 - **Intermediate**: Balanced technical advice
 - **Advanced**: Detailed optimization tips
 - **Race**: Critical-only messaging
 
 ### Customization Options
+
 - Message frequency adjustment
 - Category-specific settings
 - Track-specific optimizations
@@ -192,12 +214,14 @@ The message system prevents information overload:
 ## Future Enhancement Possibilities
 
 ### Machine Learning Evolution
+
 - Train custom models on user data
 - Predictive performance analysis
 - Personalized coaching algorithms
 - Multi-car comparison analysis
 
 ### Advanced Features
+
 - Voice coaching integration
 - Predictive race strategy
 - Setup optimization recommendations
@@ -205,21 +229,21 @@ The message system prevents information overload:
 
 ## Comparison with Previous System
 
-| Feature | Previous System | Hybrid Agent |
-|---------|----------------|---------------|
-| Response Time | Variable | <10ms (local) |
-| Coaching Quality | Basic patterns | AI + ML hybrid |
-| Cost Efficiency | N/A | Optimized API usage |
-| Personalization | Limited | Adaptive learning |
-| Reliability | Dependent on connection | Local fallback |
-| Extensibility | Difficult | Modular design |
+| Feature          | Previous System         | Hybrid Agent        |
+| ---------------- | ----------------------- | ------------------- |
+| Response Time    | Variable                | <10ms (local)       |
+| Coaching Quality | Basic patterns          | AI + ML hybrid      |
+| Cost Efficiency  | N/A                     | Optimized API usage |
+| Personalization  | Limited                 | Adaptive learning   |
+| Reliability      | Dependent on connection | Local fallback      |
+| Extensibility    | Difficult               | Modular design      |
 
 ## Conclusion
 
 The Hybrid Coaching Agent represents a paradigm shift in racing coaching technology. By combining the speed and efficiency of local machine learning with the sophistication of AI, it delivers:
 
 1. **Immediate feedback** for common driving situations
-2. **Intelligent coaching** for complex scenarios  
+2. **Intelligent coaching** for complex scenarios
 3. **Cost-effective operation** through smart API usage
 4. **Reliable performance** with graceful degradation
 5. **Personalized experience** that adapts to user progress

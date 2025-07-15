@@ -13,12 +13,10 @@ import {
 } from "./widgets";
 import { useAuth } from "../firebase/auth";
 import { useSessionHistory } from "../firebase/sessionHistory";
-import { useIRacingTelemetry } from "../hooks/useIRacingTelemetry";
 import { useCoachingMessages } from "../hooks/useCoachingMessages";
 import { useWidgetLayout } from "../hooks/useWidgetLayout";
 
 const GT3OverlaySystem = () => {
-  const { telemetryData, isConnected } = useIRacingTelemetry();
   const {
     coachingMessages,
     setCoachingMessages,
@@ -26,6 +24,8 @@ const GT3OverlaySystem = () => {
     markMessagesAsRead,
     isCoachingConnected,
     sessionInfo,
+    telemetryData,
+    isTelemetryConnected,
   } = useCoachingMessages();
 
   // Firebase hooks
@@ -62,7 +62,7 @@ const GT3OverlaySystem = () => {
 
   // Session management - start session when we have session info and user is authenticated
   useEffect(() => {
-    if (isAuthenticated && sessionInfo && !hasActiveSession && isConnected) {
+    if (isAuthenticated && sessionInfo && !hasActiveSession && isTelemetryConnected) {
       console.log("Starting new session:", sessionInfo);
       startSession(sessionInfo, telemetryData).catch(console.error);
     }
@@ -70,21 +70,21 @@ const GT3OverlaySystem = () => {
     isAuthenticated,
     sessionInfo,
     hasActiveSession,
-    isConnected,
+    isTelemetryConnected,
     startSession,
     telemetryData,
   ]);
 
   // End session when disconnected from iRacing
   useEffect(() => {
-    if (!isConnected && hasActiveSession) {
+    if (!isTelemetryConnected && hasActiveSession) {
       console.log("iRacing disconnected, ending session");
       endSession({
         total_laps: telemetryData?.lap || 0,
         final_fuel_level: telemetryData?.fuelLevel || 0,
       }).catch(console.error);
     }
-  }, [isConnected, hasActiveSession, endSession, telemetryData]);
+  }, [isTelemetryConnected, hasActiveSession, endSession, telemetryData]);
 
   // Track lap completions and save to Firebase
   useEffect(() => {
@@ -124,7 +124,7 @@ const GT3OverlaySystem = () => {
     <div className="min-h-screen bg-transparent">
       <div className="fixed top-4 right-4 z-50 flex items-center space-x-2">
         <StatusIndicators
-          isConnected={isConnected}
+          isConnected={isTelemetryConnected}
           isAuthenticated={isAuthenticated}
           hasActiveSession={hasActiveSession}
         />
@@ -179,7 +179,7 @@ const GT3OverlaySystem = () => {
           clearMessages={clearMessages}
           markMessagesAsRead={markMessagesAsRead}
           isCoachingConnected={isCoachingConnected}
-          isConnected={isConnected}
+          isConnected={isTelemetryConnected}
         />
       </DraggableWidget>
 

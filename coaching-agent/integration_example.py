@@ -77,14 +77,18 @@ class TelemetryCoachingBridge:
             logger.error(f"Failed to connect to telemetry server: {e}")
     
     async def process_telemetry(self, telemetry_data: Dict[str, Any]):
-        """Process telemetry through the coaching agent"""
+        """Process telemetry through the coaching agent and broadcast to UI"""
         try:
             # Transform telemetry data if needed to match coaching agent format
             transformed_data = self.transform_telemetry(telemetry_data)
-            
             # Process through coaching agent
             await self.coaching_agent.process_telemetry(transformed_data)
-            
+            # Broadcast raw telemetry to UI (type: 'telemetry')
+            if hasattr(self, 'telemetry_broadcast_callback') and self.telemetry_broadcast_callback:
+                await self.telemetry_broadcast_callback({
+                    'type': 'telemetry',
+                    'data': telemetry_data
+                })
         except Exception as e:
             logger.error(f"Error in telemetry processing: {e}")
     
@@ -150,16 +154,20 @@ class TelemetryCoachingBridge:
             return self.coaching_agent.get_stats()
         return {}
 
+    def set_telemetry_broadcast_callback(self, callback):
+        """Set callback for broadcasting telemetry to UI"""
+        self.telemetry_broadcast_callback = callback
+
 class WebSocketCoachingServer:
-    """WebSocket server to deliver coaching messages to UI"""
+    """WebSocket server to deliver coaching messages and telemetry to UI"""
     
     def __init__(self, host: str = "localhost", port: int = 8001):
         self.host = host
         self.port = port
         self.clients = set()
-        
+    
     async def start_server(self):
-        """Start the WebSocket server for coaching messages"""
+        """Start the WebSocket server for coaching messages and telemetry"""
         logger.info(f"Starting coaching WebSocket server on {self.host}:{self.port}")
         
         async def handle_client(websocket, path):
@@ -175,7 +183,7 @@ class WebSocketCoachingServer:
         return await websockets.serve(handle_client, self.host, self.port)
     
     async def broadcast_message(self, message: Dict[str, Any]):
-        """Broadcast coaching message to all connected clients"""
+        """Broadcast a message (coaching or telemetry) to all connected clients"""
         if not self.clients:
             return
         
@@ -211,14 +219,19 @@ async def main():
     # Create the bridge
     bridge = TelemetryCoachingBridge(coaching_config)
     
-    # Create WebSocket server for coaching messages
+    # Create WebSocket server for coaching messages and telemetry
     coaching_server = WebSocketCoachingServer()
     
     # Set up message delivery to WebSocket clients
     async def deliver_coaching_message(message: Dict[str, Any]):
+        await coaching_server.broadcast_message({
+            'type': 'coaching_message',
+            **message
+        })
+    async def deliver_telemetry_message(message: Dict[str, Any]):
         await coaching_server.broadcast_message(message)
-    
     bridge.set_message_callback(deliver_coaching_message)
+    bridge.set_telemetry_broadcast_callback(deliver_telemetry_message)
     
     try:
         # Start WebSocket server

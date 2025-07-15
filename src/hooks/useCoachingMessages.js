@@ -4,6 +4,8 @@ export const useCoachingMessages = () => {
   const [coachingMessages, setCoachingMessages] = useState([]);
   const [isCoachingConnected, setIsCoachingConnected] = useState(false);
   const [sessionInfo, setSessionInfo] = useState(null); // Add session info state
+  const [telemetryData, setTelemetryData] = useState(null); // Add telemetry data state
+  const [isTelemetryConnected, setIsTelemetryConnected] = useState(false); // Add telemetry connection state
   const coachingWs = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const MESSAGE_DISPLAY_TIME = 8000; // 8 seconds per message
@@ -161,6 +163,12 @@ export const useCoachingMessages = () => {
                   .slice(0, 4) // Match the max messages in UI
               );
             }
+            // Handle telemetry messages
+            if (message.type === "telemetry" && message.data) {
+              setTelemetryData(message.data);
+              setIsTelemetryConnected(true);
+              return;
+            }
           } catch (error) {
             console.error("Error parsing coaching message:", error);
           }
@@ -173,6 +181,7 @@ export const useCoachingMessages = () => {
             event.reason
           );
           setIsCoachingConnected(false);
+          setIsTelemetryConnected(false);
 
           // Clear the WebSocket reference
           coachingWs.current = null;
@@ -189,6 +198,7 @@ export const useCoachingMessages = () => {
         coachingWs.current.onerror = (error) => {
           console.error("Coaching WebSocket error:", error);
           setIsCoachingConnected(false);
+          setIsTelemetryConnected(false);
         };
       } catch (error) {
         console.error("Failed to connect to coaching WebSocket:", error);
@@ -240,5 +250,7 @@ export const useCoachingMessages = () => {
     markMessagesAsRead,
     isCoachingConnected,
     sessionInfo,
+    telemetryData,
+    isTelemetryConnected,
   };
 };

@@ -3,10 +3,10 @@ import React from "react";
 const SessionInfoWidget = ({ telemetryData, sessionInfo }) => (
   <div className="space-y-2">
     <div className="text-sm font-medium text-white">
-      {sessionInfo?.car_name || "No Car"}
+      {sessionInfo?.carName || "No Car"}
     </div>
     <div className="text-xs text-gray-400">
-      {sessionInfo?.track_name || "No Track"}
+      {sessionInfo?.trackName || "No Track"}
     </div>
     <div className="flex justify-between text-xs">
       <span className="text-gray-400">Lap:</span>

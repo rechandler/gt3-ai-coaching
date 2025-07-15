@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass, field
 from collections import deque, defaultdict
 from enum import Enum
+import inspect
 
 from local_ml_coach import LocalMLCoach
 from remote_ai_coach import RemoteAICoach
@@ -113,8 +114,9 @@ class HybridCoachingAgent:
     async def stop(self):
         """Stop the coaching agent"""
         self.is_active = False
-        await self.session_manager.save_session()
+        self.session_manager.save_session()  # Do not await, as this is not async
         logger.info("Coaching agent stopped")
+        return None
     
     async def process_telemetry(self, telemetry_data: Dict[str, Any]):
         """Process incoming telemetry data"""
@@ -319,6 +321,11 @@ class HybridCoachingAgent:
             'remote_coach_stats': self.remote_coach.get_stats(),
             'context': self.context.__dict__
         }
+
+async def maybe_await(result):
+    if inspect.isawaitable(result):
+        return await result
+    return result
 
 # Main entry point
 async def main():

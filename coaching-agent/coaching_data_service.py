@@ -1,4 +1,4 @@
- """
+"""
 Coaching Data Service
 ====================
 
@@ -39,12 +39,12 @@ if os.path.exists(coaching_agent_path):
         from hybrid_coach import HybridCoachingAgent
         from config import ConfigManager
         COACHING_AGENT_AVAILABLE = True
-        logger.info("✅ Coaching agent imported successfully")
+        logger.info("Coaching agent imported successfully")
     except ImportError as e:
-        logger.warning(f"❌ Failed to import coaching agent: {e}")
+        logger.warning(f"Failed to import coaching agent: {e}")
         COACHING_AGENT_AVAILABLE = False
 else:
-    logger.warning(f"❌ Coaching agent directory not found at: {coaching_agent_path}")
+    logger.warning(f"Coaching agent directory not found at: {coaching_agent_path}")
     COACHING_AGENT_AVAILABLE = False
 
 @dataclass
@@ -112,10 +112,10 @@ class CoachingDataService:
             
             # Create the coaching agent
             self.coaching_agent = HybridCoachingAgent(coaching_config)
-            logger.info("✅ Coaching agent initialized successfully")
+            logger.info("Coaching agent initialized successfully")
             
         except Exception as e:
-            logger.error(f"❌ Failed to initialize coaching agent: {e}")
+            logger.error(f"Failed to initialize coaching agent: {e}")
             self.coaching_agent = None
     
     async def start_coaching_agent(self):
@@ -125,9 +125,9 @@ class CoachingDataService:
                 # Start the coaching agent in the background
                 asyncio.create_task(self.coaching_agent.start())
                 self.coaching_agent_active = True
-                logger.info("🧠 Coaching agent started successfully")
+                logger.info("Coaching agent started successfully")
             except Exception as e:
-                logger.error(f"❌ Failed to start coaching agent: {e}")
+                logger.error(f"Failed to start coaching agent: {e}")
                 self.coaching_agent_active = False
     
     async def stop_coaching_agent(self):
@@ -136,9 +136,10 @@ class CoachingDataService:
             try:
                 await self.coaching_agent.stop()
                 self.coaching_agent_active = False
-                logger.info("🧠 Coaching agent stopped")
+                logger.info("Coaching agent stopped")
             except Exception as e:
-                logger.error(f"❌ Failed to stop coaching agent: {e}")
+                logger.error(f"Failed to stop coaching agent: {e}")
+        return None
     
     async def process_telemetry_with_coaching(self, telemetry_data: Dict[str, Any]) -> Dict[str, Any]:
         """Process telemetry through the coaching agent and return enhanced data"""
@@ -199,7 +200,7 @@ class CoachingDataService:
                 await self.broadcast_to_ui(coaching_message)
                 
                 # Log the coaching message
-                logger.info(f"🧠 Coaching: [{message.category}] {message.content}")
+                logger.info(f"Coaching: [{message.category}] {message.content}")
                 
         except Exception as e:
             logger.error(f"Error checking for coaching messages: {e}")
@@ -247,6 +248,14 @@ class CoachingDataService:
             
         return transformed
     
+    def _map_priority_to_number(self, priority):
+        """Map message priority to a numeric value for UI"""
+        # If priority is an enum, map to int, else fallback to 1
+        try:
+            return int(priority.value) if hasattr(priority, 'value') else int(priority)
+        except Exception:
+            return 1
+
     # =============================================================================
     # TELEMETRY SERVICE CONNECTION
     # =============================================================================
@@ -257,7 +266,7 @@ class CoachingDataService:
             try:
                 uri = f"ws://{self.telemetry_host}:{self.telemetry_port}"
                 async with websockets.connect(uri) as websocket:
-                    logger.info(f"📊 Connected to telemetry stream at {uri}")
+                    logger.info(f"Connected to telemetry stream at {uri}")
                     self.telemetry_websocket = websocket
                     self.telemetry_connected = True
                     
@@ -281,7 +290,7 @@ class CoachingDataService:
             try:
                 uri = f"ws://{self.telemetry_host}:{self.session_port}"
                 async with websockets.connect(uri) as websocket:
-                    logger.info(f"🏁 Connected to session stream at {uri}")
+                    logger.info(f"Connected to session stream at {uri}")
                     self.session_websocket = websocket
                     self.session_connected = True
                     
@@ -309,7 +318,7 @@ class CoachingDataService:
             message_type = data.get("type")
             
             if message_type == "connected":
-                logger.info("📊 Telemetry stream connection confirmed")
+                logger.info("Telemetry stream connection confirmed")
                 return
             
             if message_type == "telemetry":
@@ -317,7 +326,7 @@ class CoachingDataService:
                 self.latest_telemetry = telemetry_data
                 
                 # Debug logging
-                logger.debug(f"📊 Processing telemetry: Speed={telemetry_data.get('speed', 'N/A')}, UI clients={len(self.ui_clients)}")
+                logger.debug(f"Processing telemetry: Speed={telemetry_data.get('speed', 'N/A')}, UI clients={len(self.ui_clients)}")
                 
                 # Process telemetry for coaching insights
                 processed_data = await self.process_telemetry(telemetry_data)
@@ -330,7 +339,7 @@ class CoachingDataService:
                 })
                 
                 # Debug: confirm forwarding
-                logger.debug(f"📊 Forwarded telemetry to {len(self.ui_clients)} UI clients")
+                logger.debug(f"Forwarded telemetry to {len(self.ui_clients)} UI clients")
                 
         except Exception as e:
             logger.error(f"Error handling telemetry message: {e}")
@@ -341,7 +350,7 @@ class CoachingDataService:
             message_type = data.get("type")
             
             if message_type == "connected":
-                logger.info("🏁 Session stream connection confirmed")
+                logger.info("Session stream connection confirmed")
                 return
             
             if message_type == "session":
@@ -361,7 +370,7 @@ class CoachingDataService:
                 # Log session changes
                 track_name = session_data.get('trackName', 'Unknown Track')
                 car_name = session_data.get('carName', 'Unknown Car')
-                logger.info(f"🏁 Session update: Track='{track_name}', Car='{car_name}'")
+                logger.info(f"Session update: Track='{track_name}', Car='{car_name}'")
                 
         except Exception as e:
             logger.error(f"Error handling session message: {e}")
@@ -449,7 +458,7 @@ class CoachingDataService:
             )
             
             if session_changed:
-                logger.info(f"🔄 Session change detected: {self.session_state.track_name} → {track_name}")
+                logger.info(f"Session change detected: {self.session_state.track_name} -> {track_name}")
                 self.session_state.session_start_time = time.time()
             
             # Update state
@@ -471,7 +480,7 @@ class CoachingDataService:
     async def handle_ui_client(self, websocket, path=None):
         """Handle coaching UI client connections"""
         try:
-            logger.info(f"🖥️ UI client connected from {websocket.remote_address}")
+            logger.info(f"UI client connected from {websocket.remote_address}")
             self.ui_clients.add(websocket)
             
             # Send initial connection message
@@ -625,12 +634,11 @@ class CoachingDataService:
                 
                 # Log status every 30 seconds
                 if current_time - last_log_time > 30:
-                    coaching_status = "✅" if (self.coaching_agent and self.coaching_agent_active) else "❌"
-                    logger.info(f"📈 Service Status - Telemetry: {'✅' if self.telemetry_connected else '❌'}, "
-                              f"Session: {'✅' if self.session_connected else '❌'}, "
-                              f"Coaching: {coaching_status}, "
-                              f"UI Clients: {len(self.ui_clients)}, "
-                              f"Active Session: {'✅' if self.session_state.is_active else '❌'}")
+                    telemetry_status = "OK" if self.telemetry_connected else "NO"
+                    session_status = "OK" if self.session_connected else "NO"
+                    coaching_status = "OK" if (self.coaching_agent and self.coaching_agent_active) else "NO"
+                    active_session = "YES" if self.session_state.is_active else "NO"
+                    logger.info(f"Service Status - Telemetry: {telemetry_status}, Session: {session_status}, Coaching: {coaching_status}, UI Clients: {len(self.ui_clients)}, Active Session: {active_session}")
                     last_log_time = current_time
                 
                 await asyncio.sleep(5)  # Check every 5 seconds
@@ -645,16 +653,16 @@ class CoachingDataService:
     
     async def start_service(self):
         """Start the coaching data service"""
-        logger.info(f"🚀 Starting Coaching Data Service")
-        logger.info(f"📊 Connecting to telemetry stream at ws://{self.telemetry_host}:{self.telemetry_port}")
-        logger.info(f"🏁 Connecting to session stream at ws://{self.telemetry_host}:{self.session_port}")
-        logger.info(f"🖥️ UI server on ws://{self.ui_host}:{self.ui_port}")
+        logger.info(f"Starting Coaching Data Service")
+        logger.info(f"Connecting to telemetry stream at ws://{self.telemetry_host}:{self.telemetry_port}")
+        logger.info(f"Connecting to session stream at ws://{self.telemetry_host}:{self.session_port}")
+        logger.info(f"UI server on ws://{self.ui_host}:{self.ui_port}")
         
         # Start coaching agent if available
         if COACHING_AGENT_AVAILABLE:
             await self.start_coaching_agent()
         else:
-            logger.warning("⚠️ Coaching agent not available - running without AI coaching")
+            logger.warning("Coaching agent not available - running without AI coaching")
         
         # Start UI server
         ui_server = websockets.serve(self.handle_ui_client, self.ui_host, self.ui_port)
@@ -691,7 +699,7 @@ def main():
     try:
         asyncio.run(service.start_service())
     except KeyboardInterrupt:
-        logger.info("🏁 Coaching data service stopped by user")
+        logger.info("Coaching data service stopped by user")
 
 if __name__ == "__main__":
     main()

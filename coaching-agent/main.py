@@ -11,6 +11,9 @@ import signal
 import sys
 import os
 from typing import Dict, Any
+import inspect
+
+shutdown_event = None  # Global shutdown event for graceful shutdown
 
 # Add the coaching-agent directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -30,6 +33,11 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+async def maybe_await(result):
+    if inspect.isawaitable(result):
+        return await result
+    return result
 
 class CoachingAgentRunner:
     """Manages the coaching agent lifecycle"""
@@ -58,7 +66,6 @@ class CoachingAgentRunner:
         try:
             logger.info("Starting GT3 Coaching Agent...")
             self.agent = HybridCoachingAgent(self.config_manager.get_config())
-            self.setup_signal_handlers()
             self.running = True
             # Start the coaching data service
             self.coaching_data_service = CoachingDataService()
@@ -77,20 +84,18 @@ class CoachingAgentRunner:
         if self.running and self.agent:
             logger.info("Stopping coaching agent...")
             try:
-                await self.agent.stop()
+                result = self.agent.stop()
+                print(f"About to await self.agent.stop(), got: {result} (type: {type(result)})")
+                logger.debug(f"About to await self.agent.stop(), got: {result} (type: {type(result)})")
+                if hasattr(result, '__await__'):
+                    await result
+                else:
+                    logger.error(f"self.agent.stop() returned non-awaitable: {result} (type: {type(result)})")
                 self.running = False
                 logger.info("Coaching agent stopped successfully")
             except Exception as e:
                 logger.error(f"Error stopping coaching agent: {e}")
-    
-    def setup_signal_handlers(self):
-        """Setup signal handlers for graceful shutdown"""
-        def signal_handler(signum, frame):
-            logger.info(f"Received signal {signum}, initiating shutdown...")
-            asyncio.create_task(self.stop())
-        
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
+        return None
     
     async def process_telemetry(self, telemetry_data: Dict[str, Any]):
         """Process telemetry data through the agent"""
@@ -172,48 +177,46 @@ async def main():
     try:
         # Create and start the coaching agent
         runner = CoachingAgentRunner(args.config, args.environment)
-        
+
         if args.simulate:
             # Run with simulated telemetry
             logger.info("Running in simulation mode...")
             simulator = TelemetrySimulator()
-            
+
             # Start the agent in the background
             agent_task = asyncio.create_task(runner.start())
-            
+
             # Wait a moment for startup
             await asyncio.sleep(2)
-            
+
             # Send simulated telemetry
-            try:
-                while runner.running:
-                    telemetry = simulator.generate_telemetry()
-                    await runner.process_telemetry(telemetry)
-                    
-                    # Print stats occasionally
-                    if simulator.lap_count % 5 == 0 and simulator.lap_progress < 0.01:
-                        stats = runner.get_stats()
-                        logger.info(f"Agent stats: {stats}")
-                    
-                    await asyncio.sleep(0.1)  # 10Hz update rate
-                    
-            except KeyboardInterrupt:
-                logger.info("Simulation interrupted by user")
-                
-            # Wait for agent to finish
+            while runner.running:
+                telemetry = simulator.generate_telemetry()
+                await runner.process_telemetry(telemetry)
+
+                # Print stats occasionally
+                if simulator.lap_count % 5 == 0 and simulator.lap_progress < 0.01:
+                    stats = runner.get_stats()
+                    logger.info(f"Agent stats: {stats}")
+
+                await asyncio.sleep(0.1)  # 10Hz update rate
+
+            await runner.stop()
             await agent_task
-            
+
         else:
             # Run normally (waiting for real telemetry)
             logger.info("Waiting for telemetry data...")
             await runner.start()
-    
+            await runner.stop()
+
     except KeyboardInterrupt:
-        logger.info("Shutdown requested by user")
+        logger.info("Shutdown requested by user (KeyboardInterrupt)")
+        await runner.stop()
     except Exception as e:
         logger.error(f"Fatal error: {e}")
         sys.exit(1)
-    
+
     logger.info("Coaching agent shutdown complete")
 
 if __name__ == "__main__":

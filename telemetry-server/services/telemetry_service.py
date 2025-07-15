@@ -20,15 +20,8 @@ import time
 from typing import Dict, Any, Optional, Set
 import websockets
 import websockets.exceptions
-
-# Import iRacing SDK
-try:
-    import irsdk
-    SDK_TYPE = "irsdk"
-except ImportError:
-    print("Warning: irsdk not available, using mock data")
-    from mock_irsdk import MockIRSDK as irsdk
-    SDK_TYPE = "mock"
+import irsdk
+SDK_TYPE = "irsdk"
 
 logger = logging.getLogger(__name__)
 
@@ -113,11 +106,9 @@ class TelemetryService:
             # First, ensure SDK is started
             if hasattr(self.ir, 'startup') and hasattr(self.ir, 'is_initialized'):
                 try:
-                    if self.available_methods.get('is_initialized', {}).get('callable'):
-                        initialized = self.ir.is_initialized()
-                    else:
-                        initialized = self.ir.is_initialized
-                        
+                    attr = self.ir.is_initialized
+                    initialized = attr() if callable(attr) else attr
+                    
                     if not initialized:
                         logger.debug("SDK not initialized, attempting startup...")
                         startup_result = self.ir.startup()
@@ -130,17 +121,13 @@ class TelemetryService:
             # Check connection status
             if hasattr(self.ir, 'is_connected') and hasattr(self.ir, 'is_initialized'):
                 try:
-                    if self.available_methods.get('is_connected', {}).get('callable'):
-                        connected = self.ir.is_connected()
-                    else:
-                        connected = self.ir.is_connected
-                        
-                    if self.available_methods.get('is_initialized', {}).get('callable'):
-                        initialized = self.ir.is_initialized()
-                    else:
-                        initialized = self.ir.is_initialized
-                        
-                    return connected and initialized
+                    attr = self.ir.is_connected
+                    connected = attr() if callable(attr) else attr
+                    
+                    attr = self.ir.is_initialized
+                    initialized = attr() if callable(attr) else attr
+                    
+                    return bool(connected) and bool(initialized)
                 except Exception as e:
                     logger.debug(f"Error calling connection methods: {e}")
             
@@ -405,7 +392,7 @@ class TelemetryService:
             # Try to get car name from DriverInfo
             try:
                 driver_info = self.ir['DriverInfo']
-                if driver_info and 'Drivers' in driver_info and len(driver_info['Drivers']) > 0:
+                if isinstance(driver_info, dict) and 'Drivers' in driver_info and len(driver_info['Drivers']) > 0:
                     player_car_idx = driver_info.get('DriverCarIdx', 0)
                     
                     # Find the player's driver entry

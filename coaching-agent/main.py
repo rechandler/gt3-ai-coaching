@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from hybrid_coach import HybridCoachingAgent
 from config import ConfigManager, get_development_config, get_production_config
+from coaching_data_service import CoachingDataService
 
 # Setup logging
 logging.basicConfig(
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 class CoachingAgentRunner:
     """Manages the coaching agent lifecycle"""
     
-    def __init__(self, config_file: str = None, environment: str = 'development'):
+    def __init__(self, config_file: str = "", environment: str = 'development'):
         self.config_manager = ConfigManager(config_file)
         self.environment = environment
         self.agent = None
@@ -53,22 +54,21 @@ class CoachingAgentRunner:
             raise ValueError("Invalid configuration")
     
     async def start(self):
-        """Start the coaching agent"""
+        """Start the coaching agent and the coaching data service"""
         try:
             logger.info("Starting GT3 Coaching Agent...")
-            
-            # Create and configure the agent
             self.agent = HybridCoachingAgent(self.config_manager.get_config())
-            
-            # Set up signal handlers for graceful shutdown
             self.setup_signal_handlers()
-            
-            # Start the agent
             self.running = True
-            await self.agent.start()
-            
+            # Start the coaching data service
+            self.coaching_data_service = CoachingDataService()
+            logger.info("Starting Coaching Data Service...")
+            await asyncio.gather(
+                self.agent.start(),
+                self.coaching_data_service.start_service()
+            )
         except Exception as e:
-            logger.error(f"Error starting coaching agent: {e}")
+            logger.error(f"Error starting coaching agent or data service: {e}")
             await self.stop()
             raise
     

@@ -13,17 +13,29 @@ The Hybrid Coaching Agent analyzes telemetry data in real-time and provides coac
 
 ```
 coaching-agent/
-├── hybrid_coach.py          # Main orchestrator
-├── local_ml_coach.py        # Local ML analysis
-├── remote_ai_coach.py       # OpenAI integration
-├── message_queue.py         # Message prioritization
-├── telemetry_analyzer.py    # Telemetry processing
-├── session_manager.py       # Session tracking
-├── config.py               # Configuration management
-├── main.py                 # Startup script
-├── requirements.txt        # Dependencies
-└── README.md               # This file
+├── coaching_data_service.py   # Connects to telemetry service, runs agent, serves UI
+├── hybrid_coach.py            # Main orchestrator
+├── local_ml_coach.py          # Local ML analysis
+├── remote_ai_coach.py         # OpenAI integration
+├── message_queue.py           # Message prioritization
+├── telemetry_analyzer.py      # Telemetry processing
+├── session_manager.py         # Session tracking
+├── config.py                  # Configuration management
+├── main.py                    # Startup script
+├── requirements.txt           # Dependencies
+└── README.md                  # This file
 ```
+
+## How It Works
+
+- **Coaching Data Service** (`coaching_data_service.py`):
+  - Connects to the telemetry service's WebSocket endpoints (9001/9002)
+  - Receives real-time telemetry and session data
+  - Passes data to the Hybrid Coaching Agent for analysis
+  - Forwards coaching messages and processed data to the UI (via its own WebSocket server)
+- **Hybrid Coaching Agent** (`hybrid_coach.py`):
+  - Analyzes telemetry using local ML and remote AI
+  - Generates actionable coaching messages
 
 ## Features
 
@@ -121,11 +133,12 @@ The system uses a hierarchical configuration system with these main sections:
 
 ## Usage
 
-### Basic Usage
+### Start the Coaching Agent and Data Service
 
 ```bash
 python main.py
 ```
+This will start both the coaching agent and the coaching data service, which will connect to the telemetry service and serve coaching messages to the UI.
 
 ### With Simulation
 
@@ -273,24 +286,13 @@ python main.py --debug
 tail -f coaching_agent.log
 ```
 
-## Integration with Existing System
+## Integration with Telemetry Service
 
-To integrate with your existing telemetry server:
+The coaching agent (via the coaching data service) connects to the telemetry service's WebSocket endpoints:
+- `ws://localhost:9001` (telemetry data)
+- `ws://localhost:9002` (session/driver data)
 
-1. Import the coaching agent
-2. Process telemetry data through the agent
-3. Receive coaching messages via callbacks
-
-```python
-# In your telemetry server
-from coaching_agent.hybrid_coach import HybridCoachingAgent
-
-agent = HybridCoachingAgent(config)
-await agent.start()
-
-# When telemetry arrives
-await agent.process_telemetry(telemetry_data)
-```
+It processes incoming data and provides coaching messages to the UI or other consumers.
 
 ## Future Enhancements
 

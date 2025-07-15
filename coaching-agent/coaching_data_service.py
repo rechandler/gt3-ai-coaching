@@ -26,9 +26,9 @@ from datetime import datetime, timedelta
 logger = logging.getLogger(__name__)
 
 # Add coaching-agent to path
-# Get the project root directory (go up from services -> telemetry-server -> project root)
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-coaching_agent_path = os.path.join(project_root, 'coaching-agent')
+# Get the directory where this file lives (which is coaching-agent/)
+project_root = os.path.dirname(os.path.abspath(__file__))
+coaching_agent_path = project_root
 
 logger.info(f"Looking for coaching agent at: {coaching_agent_path}")
 
@@ -261,28 +261,20 @@ class CoachingDataService:
     # =============================================================================
     
     async def connect_to_telemetry_stream(self):
-        """Connect to telemetry service's telemetry stream"""
+        logger.info(f"Attempting to connect to telemetry stream at ws://{self.telemetry_host}:{self.telemetry_port}")
         while True:
             try:
-                uri = f"ws://{self.telemetry_host}:{self.telemetry_port}"
-                async with websockets.connect(uri) as websocket:
-                    logger.info(f"Connected to telemetry stream at {uri}")
+                async with websockets.connect(f"ws://{self.telemetry_host}:{self.telemetry_port}") as websocket:
                     self.telemetry_websocket = websocket
                     self.telemetry_connected = True
-                    
+                    logger.info(f"Connected to telemetry stream at ws://{self.telemetry_host}:{self.telemetry_port}")
                     async for message in websocket:
-                        try:
-                            data = json.loads(message)
-                            await self.handle_telemetry_message(data)
-                        except json.JSONDecodeError:
-                            logger.warning(f"Invalid JSON from telemetry stream: {message}")
-                        except Exception as e:
-                            logger.error(f"Error processing telemetry message: {e}")
-                            
+                        logger.info(f"Received telemetry message: {message[:100]}... (truncated)")
+                        await self.handle_telemetry_message(json.loads(message))
             except Exception as e:
                 self.telemetry_connected = False
-                logger.warning(f"Telemetry stream connection failed: {e}")
-                await asyncio.sleep(5)  # Retry in 5 seconds
+                logger.error(f"Error in telemetry stream connection: {e}")
+                await asyncio.sleep(5)
     
     async def connect_to_session_stream(self):
         """Connect to telemetry service's session stream"""
@@ -478,53 +470,37 @@ class CoachingDataService:
     # =============================================================================
     
     async def handle_ui_client(self, websocket, path=None):
-        """Handle coaching UI client connections"""
+        logger.info(f"UI client attempting to connect from {websocket.remote_address}")
         try:
-            logger.info(f"UI client connected from {websocket.remote_address}")
             self.ui_clients.add(websocket)
-            
-            # Send initial connection message
+            logger.info(f"UI client connected from {websocket.remote_address}")
+            # Send initial session info
             await websocket.send(json.dumps({
-                "type": "connected",
-                "message": "Connected to coaching data service",
-                "services": {
-                    "telemetry": self.telemetry_connected,
-                    "session": self.session_connected
+                "type": "sessionInfo",
+                "data": {
+                    "track": self.session_state.track_name,
+                    "car": self.session_state.car_name,
+                    "active": self.session_state.is_active
                 }
             }))
-            
-            # Send current session data if available
-            if self.latest_session_data:
-                await websocket.send(json.dumps({
-                    "type": "sessionInfo",
-                    "data": self.latest_session_data,
-                    "timestamp": time.time()
-                }))
-            
-            # Send current telemetry if available
-            if self.latest_telemetry:
-                processed_telemetry = await self.process_telemetry(self.latest_telemetry)
-                await websocket.send(json.dumps({
-                    "type": "telemetry",
-                    "data": processed_telemetry,
-                    "timestamp": time.time()
-                }))
-            
+            logger.info(f"Sent initial session info to UI client {websocket.remote_address}")
             # Keep connection alive
             async for message in websocket:
                 try:
+                    logger.info(f"Received message from UI client {websocket.remote_address}: {message}")
                     data = json.loads(message)
-                    # Handle UI client requests if needed
                     await self.handle_ui_request(websocket, data)
                 except json.JSONDecodeError:
-                    logger.warning(f"Invalid JSON received from UI client: {message}")
-                    
-        except websockets.exceptions.ConnectionClosed:
-            logger.debug("UI client disconnected")
+                    logger.warning(f"Invalid JSON received from UI client {websocket.remote_address}: {message}")
+                except Exception as e:
+                    logger.error(f"Error handling message from UI client {websocket.remote_address}: {e}")
+        except websockets.exceptions.ConnectionClosed as e:
+            logger.info(f"UI client {websocket.remote_address} disconnected: {e}")
         except Exception as e:
-            logger.debug(f"UI client error: {e}")
+            logger.error(f"UI client error: {e}")
         finally:
             self.ui_clients.discard(websocket)
+            logger.info(f"UI client {websocket.remote_address} removed from active clients")
     
     async def handle_ui_request(self, websocket, data: Dict[str, Any]):
         """Handle requests from UI clients"""

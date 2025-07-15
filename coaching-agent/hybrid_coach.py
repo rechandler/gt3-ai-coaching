@@ -313,13 +313,17 @@ class HybridCoachingAgent:
     
     def get_stats(self) -> Dict[str, Any]:
         """Get coaching agent statistics"""
+        # Convert coaching_mode to string if present in context
+        context_dict = self.context.__dict__.copy() if hasattr(self, 'context') else {}
+        if 'coaching_mode' in context_dict and hasattr(context_dict['coaching_mode'], 'value'):
+            context_dict['coaching_mode'] = context_dict['coaching_mode'].value
         return {
             'is_active': self.is_active,
             'total_messages': len(self.performance_metrics['messages_delivered']),
             'ai_usage_rate': len(self.decision_engine.ai_usage_count),
             'local_coach_stats': self.local_coach.get_stats(),
             'remote_coach_stats': self.remote_coach.get_stats(),
-            'context': self.context.__dict__
+            'context': context_dict
         }
 
 async def maybe_await(result):

@@ -269,7 +269,6 @@ class CoachingDataService:
                     self.telemetry_connected = True
                     logger.info(f"Connected to telemetry stream at ws://{self.telemetry_host}:{self.telemetry_port}")
                     async for message in websocket:
-                        logger.info(f"Received telemetry message: {message[:100]}... (truncated)")
                         await self.handle_telemetry_message(json.loads(message))
             except Exception as e:
                 self.telemetry_connected = False

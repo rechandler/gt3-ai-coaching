@@ -341,38 +341,25 @@ class TelemetryService:
     def get_session_data(self) -> Dict[str, Any]:
         """Get track/session information"""
         try:
-            track_name = "Unknown Track"
+            track_name = ""
             track_config = ""
             
             # Try to get from session info first
             session_info = self.get_session_info()
             if session_info:
                 weekend_info = session_info.get('WeekendInfo', {})
-                track_display_name = weekend_info.get('TrackDisplayName', '')
-                track_config_name = weekend_info.get('TrackConfigName', '')
-                
-                if track_display_name and track_display_name not in ['iRacing Track', '']:
-                    track_name = track_display_name
-                    track_config = track_config_name or ""
-            
-            # Fallback to telemetry
-            if track_name == "Unknown Track":
-                track_display_name = self.safe_get_telemetry('TrackDisplayName')
-                track_config_name = self.safe_get_telemetry('TrackConfigName')
-                if track_display_name and track_display_name not in ['iRacing Track', '']:
-                    track_name = track_display_name
-                    track_config = track_config_name or ""
-            
+                track_name = weekend_info.get('TrackDisplayName', '')
+                track_config = weekend_info.get('TrackConfigName', '')
+
             # Build full track name
-            full_track_name = track_name
-            if track_config and track_config.strip():
-                full_track_name += f" - {track_config}"
-            
+            full_track_name = f"{track_name} - {track_config}"
+
             return {
                 'trackName': track_name,
                 'trackConfig': track_config,
                 'fullTrackName': full_track_name,
-                'timestamp': time.time()
+                'timestamp': time.time(),
+                'session_active': bool(session_info)
             }
             
         except Exception as e:
@@ -381,7 +368,7 @@ class TelemetryService:
                 'trackName': "Unknown Track",
                 'trackConfig': "",
                 'fullTrackName': "Unknown Track",
-                'timestamp': time.time()
+                'timestamp': time.time(),
             }
     
     def get_driver_data(self) -> Dict[str, Any]:
@@ -617,7 +604,7 @@ class TelemetryService:
                         self.last_session_data = combined_session_data
                         await self.broadcast_session(combined_session_data)
                         
-                        logger.info(f"🏁 Session info: Track='{session_data['trackName']}', Car='{driver_data['carName']}'")
+                        logger.info(f"🏁 Session info: Track='{session_data['fullTrackName']}', Car='{driver_data['carName']}'")
                     
                     last_session_time = current_time
                 

@@ -5,6 +5,12 @@ Configuration for the Hybrid Coaching Agent
 """
 
 import os
+# Add dotenv support
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv is optional; if not installed, skip
 from typing import Dict, Any
 
 # Default configuration

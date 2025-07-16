@@ -301,7 +301,6 @@ class CoachingDataService:
             
             if message_type == "telemetry":
                 telemetry_data = data.get("data", {})
-                logger.info(f"handle_telemetry_message: telemetry_data = {telemetry_data}")
                 self.latest_telemetry = telemetry_data
                 
                 # Debug logging

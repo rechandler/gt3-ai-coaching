@@ -43,24 +43,18 @@ class DecisionEngine:
     def should_use_ai(self, situation: str, local_confidence: float, 
                       message_importance: float) -> bool:
         """Determine if we should use remote AI for this situation"""
-        
-        # Always use local for high-confidence, low-importance messages
-        if local_confidence > self.local_confidence_threshold and message_importance < 0.5:
-            return False
-            
-        # Use AI for complex situations or low local confidence
-        if situation in ["corner_analysis", "race_strategy", "technique_improvement"]:
-            return True
-            
-        # Check AI usage rate limiting
-        current_time = time.time()
-        recent_usage = len([t for t in self.ai_usage_count if current_time - t < 60])
-        
-        if recent_usage >= self.ai_usage_limit:
-            return False
-            
-        # Use AI for important messages with low confidence
-        return local_confidence < 0.6 and message_importance > 0.7
+        # FORCED FOR TESTING: Always use AI
+        return True
+        # Original logic below (restore after testing):
+        # if local_confidence > self.local_confidence_threshold and message_importance < 0.5:
+        #     return False
+        # if situation in ["corner_analysis", "race_strategy", "technique_improvement"]:
+        #     return True
+        # current_time = time.time()
+        # recent_usage = len([t for t in self.ai_usage_count if current_time - t < 60])
+        # if recent_usage >= self.ai_usage_limit:
+        #     return False
+        # return local_confidence < 0.6 and message_importance > 0.7
 
 @dataclass
 class CoachingContext:
@@ -123,11 +117,6 @@ class HybridCoachingAgent:
         if not self.is_active:
             return
         try:
-            # --- LOGGING: Show raw telemetry_data ---
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"HybridCoachingAgent.process_telemetry: telemetry_data = {telemetry_data}")
-            # --- END LOGGING ---
             # Update context
             self.update_context(telemetry_data)
             # Analyze telemetry

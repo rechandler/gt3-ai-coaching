@@ -266,16 +266,9 @@ class LocalMLCoach:
         
         # Get recent data for pattern analysis
         recent_data = self.telemetry_buffer.get_recent(5.0)
-        # --- LOGGING: Show recent_data ---
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"LocalMLCoach.analyze: recent_data (last 5s): {recent_data}")
         # Detect patterns
         braking_patterns = self.pattern_detector.detect_braking_patterns(recent_data)
         cornering_patterns = self.pattern_detector.detect_cornering_patterns(recent_data)
-        # --- LOGGING: Show pattern detector outputs ---
-        logger.info(f"LocalMLCoach.analyze: braking_patterns: {braking_patterns}")
-        logger.info(f"LocalMLCoach.analyze: cornering_patterns: {cornering_patterns}")
         
         # Process patterns into insights
         for pattern in braking_patterns + cornering_patterns:
@@ -324,10 +317,6 @@ class LocalMLCoach:
                             'description': pattern.description
                         }
                     })
-        
-        # --- LOGGING ---
-        logger.info(f"LocalMLCoach.analyze: Generated {len(insights)} insights: {insights}")
-        # --- END LOGGING ---
         return insights
     
     async def generate_message(self, insight: Dict[str, Any]) -> Optional[Dict[str, Any]]:

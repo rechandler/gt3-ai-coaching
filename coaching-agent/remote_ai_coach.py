@@ -68,8 +68,8 @@ Coaching Mode: {coaching_mode}
 """
     
     def build_prompt(self, insight: Dict[str, Any], telemetry_data: Dict[str, Any], 
-                    context: Any) -> str:
-        """Build a prompt for the AI"""
+                    context: Any, current_segment: Any = None) -> str:
+        """Build a prompt for the AI, including segment/turn info if available"""
         
         situation = insight.get('situation', 'general')
         confidence = insight.get('confidence', 0.0)
@@ -82,6 +82,20 @@ Coaching Mode: {coaching_mode}
             session_type=getattr(context, 'session_type', 'Practice'),
             coaching_mode=getattr(context, 'coaching_mode', 'Intermediate')
         )
+        
+        # Add segment/turn info if available
+        if current_segment:
+            seg_name = current_segment.get('name', 'Unknown')
+            seg_num = current_segment.get('number', '')
+            seg_range = current_segment.get('lap_percentage_range', None)
+            prompt += f"\nCurrent segment/turn: {seg_name}"
+            if seg_num:
+                prompt += f" (#{seg_num})"
+            if seg_range:
+                prompt += f" (lap %: {seg_range[0]}-{seg_range[1]})"
+            prompt += "\n"
+            # Explicitly request segment/turn-specific advice
+            prompt += "Provide coaching advice specific to this segment/turn, using its name and characteristics if possible.\n"
         
         # Add situation-specific context
         prompt += f"\nCurrent situation: {situation}\n"
@@ -175,8 +189,8 @@ class RemoteAICoach:
     
     async def generate_coaching(self, insight: Dict[str, Any], 
                               telemetry_data: Dict[str, Any], 
-                              context: Any) -> Optional[Dict[str, Any]]:
-        """Generate coaching advice using AI"""
+                              context: Any, current_segment: Any = None) -> Optional[Dict[str, Any]]:
+        """Generate coaching advice using AI, including segment/turn info if available"""
         
         if not self.is_available():
             logger.debug("AI coach not available (API key or rate limit)")
@@ -185,8 +199,8 @@ class RemoteAICoach:
         try:
             start_time = time.time()
             
-            # Build prompt
-            prompt = self.prompt_builder.build_prompt(insight, telemetry_data, context)
+            # Build prompt (now includes segment/turn info)
+            prompt = self.prompt_builder.build_prompt(insight, telemetry_data, context, current_segment=current_segment)
             
             # Make API request
             response = await self.make_api_request(prompt)

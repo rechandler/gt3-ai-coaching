@@ -36,6 +36,7 @@ DEFAULT_CONFIG = {
         'enable_local_coaching': True,
         'message_queue_size': 50,
         'auto_save_interval': 60.0,  # seconds
+        'verbosity': 'medium',  # Controls how chatty the coach is: 'low', 'medium', 'high'
     },
     'telemetry_config': {
         'buffer_size': 500,  # number of telemetry samples
@@ -45,22 +46,23 @@ DEFAULT_CONFIG = {
     },
     'message_config': {
         'priority_cooldowns': {
-            'critical': 2.0,
-            'high': 5.0,
-            'medium': 10.0,
-            'low': 15.0
+            'critical': 5.0,   # was 2.0
+            'high': 15.0,     # was 5.0
+            'medium': 30.0,   # was 10.0
+            'low': 60.0       # was 15.0
         },
         'category_cooldowns': {
-            'braking': 8.0,
-            'cornering': 12.0,
-            'throttle': 6.0,
-            'racing_line': 15.0,
-            'safety': 2.0,
-            'pit_strategy': 30.0,
-            'tire_management': 20.0,
-            'consistency': 10.0,
-            'performance': 8.0
-        }
+            'braking': 20.0,         # was 8.0
+            'cornering': 30.0,      # was 12.0
+            'throttle': 15.0,       # was 6.0
+            'racing_line': 45.0,    # was 15.0
+            'safety': 10.0,         # was 2.0
+            'pit_strategy': 60.0,   # was 30.0
+            'tire_management': 45.0,# was 20.0
+            'consistency': 30.0,    # was 10.0
+            'performance': 20.0     # was 8.0
+        },
+        'global_message_rate_limit': 5,  # max messages per minute
     },
     'session_config': {
         'storage_path': 'coaching_sessions',

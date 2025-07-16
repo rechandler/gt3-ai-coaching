@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from collections import deque
 import heapq
+from config import DEFAULT_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,9 @@ class CoachingMessageQueue:
             'filtered_duplicates': 0,
             'delivery_failures': 0
         }
-        
+        # Global message rate limit (messages per minute)
+        self.global_rate_limit = DEFAULT_CONFIG['message_config'].get('global_message_rate_limit', 5)
+        self.delivered_timestamps = []  # List of timestamps of delivered messages
         logger.info("Coaching message queue initialized")
     
     async def add_message(self, message: CoachingMessage):
@@ -137,17 +140,27 @@ class CoachingMessageQueue:
             return True
     
     async def get_next_message(self) -> Optional[CoachingMessage]:
-        """Get the next highest priority message"""
+        """Get the next highest priority message, enforcing global rate limit (except for CRITICAL)"""
         async with self.lock:
             if not self.queue:
                 return None
-            
+            # Peek at the next message
+            message = self.queue[0]
+            now = time.time()
+            # Clean up old timestamps (older than 60s)
+            self.delivered_timestamps = [t for t in self.delivered_timestamps if now - t < 60]
+            # Enforce global rate limit for non-critical messages
+            if message.priority.name != 'CRITICAL' and len(self.delivered_timestamps) >= self.global_rate_limit:
+                logger.debug("Global message rate limit reached; skipping delivery of non-critical message.")
+                return None
+            # Pop and deliver the message
             message = heapq.heappop(self.queue)
-            
             # Final delivery check
             if self.filter.should_deliver(message):
                 self.filter.add_delivered_message(message)
                 self.delivery_stats['total_delivered'] += 1
+                if message.priority.name != 'CRITICAL':
+                    self.delivered_timestamps.append(now)
                 return message
             else:
                 # Message filtered at delivery time

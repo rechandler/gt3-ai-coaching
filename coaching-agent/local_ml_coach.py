@@ -74,6 +74,11 @@ class PatternDetector:
             'speed_threshold': 5.0,  # 5 km/h under optimal
             'line_deviation_threshold': 2.0,  # 2 meters off line
             'consistency_threshold': 0.05,  # 5% lap time variation
+            'oversteer_steering_correction': 0.15,  # 15% steering reversal
+            'understeer_high_angle': 0.18,  # 18% steering input (lowered)
+            'understeer_low_yawrate': 0.08, # rad/s, low yaw rate (raised)
+            'oversteer_high_yawrate': 0.15, # rad/s, high yaw rate
+            'oversteer_countersteer': -0.1, # steering opposite to yaw
         }
     
     def detect_braking_patterns(self, recent_data: List[Dict[str, Any]]) -> List[DrivingPattern]:
@@ -109,27 +114,62 @@ class PatternDetector:
         return patterns
     
     def detect_cornering_patterns(self, recent_data: List[Dict[str, Any]]) -> List[DrivingPattern]:
-        """Detect cornering-related patterns"""
+        """Detect cornering-related patterns, including robust oversteer/understeer"""
+        import logging
         patterns = []
-        
         if len(recent_data) < 20:
             return patterns
-        
         # Find corners (where steering angle is significant)
         corners = []
         for i, data in enumerate(recent_data):
-            steering = abs(data.get('steering_angle', 0))
-            if steering > 0.1:  # 10% steering input
+            steering = data.get('steering_angle', 0)
+            abs_steering = abs(steering)
+            yaw_rate = data.get('yawRate', 0)
+            if abs_steering > 0.1:
                 corners.append({
                     'steering': steering,
+                    'abs_steering': abs_steering,
+                    'yawRate': yaw_rate,
                     'speed': data.get('speed', 0),
                     'position': data.get('lap_distance_pct', 0),
                     'throttle': data.get('throttle_pct', 0)
                 })
-        
+        # Robust Understeer: High steering angle, low yaw rate
+        understeer_count = 0
+        for c in corners:
+            if c['abs_steering'] > self.thresholds['understeer_high_angle'] and abs(c['yawRate']) < self.thresholds['understeer_low_yawrate']:
+                understeer_count += 1
+        if understeer_count > 2:
+            logging.debug(f"Understeer detected: count={understeer_count}, threshold={self.thresholds['understeer_high_angle']}, low_yawrate={self.thresholds['understeer_low_yawrate']}")
+            patterns.append(DrivingPattern(
+                name="understeer",
+                confidence=0.85,
+                severity=0.7,
+                frequency=understeer_count,
+                last_occurrence=time.time(),
+                description="Robust understeer: high steering angle, low yaw rate"
+            ))
+        else:
+            if understeer_count > 0:
+                logging.debug(f"Near understeer: count={understeer_count}, threshold={self.thresholds['understeer_high_angle']}, low_yawrate={self.thresholds['understeer_low_yawrate']}")
+        # Robust Oversteer: High yaw rate, steering input in opposite direction (countersteer)
+        oversteer_count = 0
+        for c in corners:
+            # If yawRate and steering are in opposite directions and yawRate is high
+            if c['yawRate'] * c['steering'] < self.thresholds['oversteer_countersteer'] and abs(c['yawRate']) > self.thresholds['oversteer_high_yawrate']:
+                oversteer_count += 1
+        if oversteer_count > 2:
+            patterns.append(DrivingPattern(
+                name="oversteer",
+                confidence=0.8,
+                severity=0.7,
+                frequency=oversteer_count,
+                last_occurrence=time.time(),
+                description="Robust oversteer: high yaw rate, countersteering detected"
+            ))
+        # Existing early throttle detection
         if len(corners) >= 5:
-            # Check for early throttle application in corners
-            throttle_in_corners = [c['throttle'] for c in corners if c['steering'] > 0.2]
+            throttle_in_corners = [c['throttle'] for c in corners if c['abs_steering'] > 0.2]
             if throttle_in_corners and np.mean(throttle_in_corners) > 30:
                 patterns.append(DrivingPattern(
                     name="early_throttle_in_corners",
@@ -139,7 +179,6 @@ class PatternDetector:
                     last_occurrence=time.time(),
                     description="Applying throttle too early while cornering"
                 ))
-        
         return patterns
     
     def detect_consistency_patterns(self, lap_times: List[float]) -> List[DrivingPattern]:
@@ -360,6 +399,17 @@ class LocalMLCoach:
             'sector_analysis': [
                 f"You're losing time in sector {data.get('sector', 0)}. Focus on {', '.join(data.get('focus_areas', []))}.",
                 f"Sector {data.get('sector', 0)} has {data.get('improvement_potential', 0):.2f}s of potential."
+            ],
+            # New: Oversteer/Understeer
+            'oversteer': [
+                "Watch out for oversteer! Try to be smoother with your steering corrections.",
+                "You're experiencing oversteer in corners. Reduce throttle or unwind steering more gently.",
+                "Oversteer detected: focus on balancing the car with smoother inputs."
+            ],
+            'understeer': [
+                "Understeer detected: try slowing down more before turn-in.",
+                "You're experiencing understeer. Reduce entry speed or use less steering angle.",
+                "Understeer: focus on getting the car rotated before adding throttle."
             ]
         }
         

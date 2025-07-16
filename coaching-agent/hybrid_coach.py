@@ -21,6 +21,7 @@ from remote_ai_coach import RemoteAICoach
 from message_queue import CoachingMessageQueue, CoachingMessage, MessagePriority
 from telemetry_analyzer import TelemetryAnalyzer
 from session_manager import SessionManager
+from track_metadata import TrackMetadataManager
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,10 @@ class HybridCoachingAgent:
         self.telemetry_analyzer = TelemetryAnalyzer()
         self.session_manager = SessionManager()
         self.decision_engine = DecisionEngine()
-        
+        # Track metadata manager for LLM-powered track info
+        self.track_metadata_manager = TrackMetadataManager(self.remote_coach)
+        self.current_track_name = None
+        self.current_segment = None
         # State tracking
         self.is_active = False
         self.last_telemetry_time = 0
@@ -117,20 +121,36 @@ class HybridCoachingAgent:
         if not self.is_active:
             return
         try:
+            # --- LOGGING: Show raw telemetry_data ---
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"HybridCoachingAgent.process_telemetry: telemetry_data = {telemetry_data}")
+            # --- END LOGGING ---
             # Update context
             self.update_context(telemetry_data)
+            # --- Track metadata integration ---
+            track_name = telemetry_data.get('track_name')
+            if track_name and track_name != self.current_track_name:
+                await self.track_metadata_manager.ensure_metadata_for_track(track_name, self.context)
+                self.current_track_name = track_name
+            # Get current segment/turn
+            lap_pct = telemetry_data.get('lap_distance_pct')
+            if lap_pct is not None:
+                self.current_segment = self.track_metadata_manager.get_current_segment(lap_pct)
+            else:
+                self.current_segment = None
             # Analyze telemetry
             analysis = self.telemetry_analyzer.analyze(telemetry_data)
             # Get local ML insights
             local_insights = await self.local_coach.analyze(telemetry_data, analysis)
             # Process each insight
             for insight in local_insights:
-                await self.process_insight(insight, telemetry_data)
+                await self.process_insight(insight, telemetry_data, self.current_segment)
             # --- REMOVED TEST MESSAGE ---
         except Exception as e:
             logger.error(f"Error processing telemetry: {e}")
     
-    async def process_insight(self, insight: Dict[str, Any], telemetry_data: Dict[str, Any]):
+    async def process_insight(self, insight: Dict[str, Any], telemetry_data: Dict[str, Any], current_segment: Any = None):
         """Process a coaching insight and decide on response"""
         
         situation = insight.get('situation', 'general')
@@ -143,7 +163,7 @@ class HybridCoachingAgent:
         if use_ai and self.remote_coach.is_available():
             # Use remote AI for sophisticated analysis
             ai_response = await self.remote_coach.generate_coaching(
-                insight, telemetry_data, self.context
+                insight, telemetry_data, self.context, current_segment=current_segment
             )
             
             if ai_response:

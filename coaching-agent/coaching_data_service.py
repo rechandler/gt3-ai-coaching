@@ -144,6 +144,12 @@ class CoachingDataService:
     async def process_telemetry_with_coaching(self, telemetry_data: Dict[str, Any]) -> Dict[str, Any]:
         """Process telemetry through the coaching agent and return enhanced data"""
         enhanced_data = telemetry_data.copy()
+
+        # Skip coaching if in pits
+        if telemetry_data.get('onPitRoad', False):
+            logger.info("Skipping coaching: car is in the pits (onPitRoad=True)")
+            enhanced_data['coaching_stats'] = {"status": "skipped_in_pits"}
+            return enhanced_data
         
         if self.coaching_agent and self.coaching_agent_active:
             try:

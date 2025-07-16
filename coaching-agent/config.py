@@ -11,10 +11,10 @@ from typing import Dict, Any
 DEFAULT_CONFIG = {
     'local_config': {
         'model_path': 'models/',
-        'confidence_threshold': 0.7,
-        'pattern_detection_sensitivity': 0.8,
-        'message_cooldown': 8.0,  # seconds
-        'performance_window': 10,  # number of laps for analysis
+        'confidence_threshold': 0.0,  # Lowered to minimum
+        'pattern_detection_sensitivity': 0.0,  # Lowered to minimum
+        'message_cooldown': 0.0,  # No cooldown
+        'performance_window': 1,  # Smallest window for analysis
     },
     'remote_config': {
         'api_key': os.getenv('OPENAI_API_KEY', ''),
@@ -25,7 +25,7 @@ DEFAULT_CONFIG = {
         'timeout': 10.0,  # seconds
     },
     'coaching_config': {
-        'default_mode': 'intermediate',
+        'default_mode': 'beginner',  # Most verbose mode
         'enable_ai_coaching': True,
         'enable_local_coaching': True,
         'message_queue_size': 50,

@@ -122,21 +122,22 @@ class HybridCoachingAgent:
         """Process incoming telemetry data"""
         if not self.is_active:
             return
-            
         try:
+            # --- LOGGING: Show raw telemetry_data ---
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"HybridCoachingAgent.process_telemetry: telemetry_data = {telemetry_data}")
+            # --- END LOGGING ---
             # Update context
             self.update_context(telemetry_data)
-            
             # Analyze telemetry
             analysis = self.telemetry_analyzer.analyze(telemetry_data)
-            
             # Get local ML insights
             local_insights = await self.local_coach.analyze(telemetry_data, analysis)
-            
             # Process each insight
             for insight in local_insights:
                 await self.process_insight(insight, telemetry_data)
-                
+            # --- REMOVED TEST MESSAGE ---
         except Exception as e:
             logger.error(f"Error processing telemetry: {e}")
     

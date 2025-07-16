@@ -209,43 +209,30 @@ class CoachingDataService:
         """Transform telemetry data to coaching agent format"""
         # Map fields from telemetry service to coaching agent expected format
         transformed = {}
-        
-        # Direct field mappings
+        # Updated field mappings to match actual telemetry data
         field_map = {
-            'Speed': 'speed',
-            'Brake': 'brake_pct',
-            'Throttle': 'throttle_pct', 
-            'SteeringWheelAngle': 'steering_angle',
-            'LapDistPct': 'lap_distance_pct',
-            'Gear': 'gear',
-            'RPM': 'rpm',
-            'LapCurrentLapTime': 'current_lap_time',
-            'LapLastLapTime': 'last_lap_time'
+            'speed': 'speed',
+            'brake': 'brake_pct',
+            'throttle': 'throttle_pct',
+            'steering': 'steering_angle',
+            'lapDistPct': 'lap_distance_pct',
+            'gear': 'gear',
+            'rpm': 'rpm',
+            'lapCurrentLapTime': 'current_lap_time',
+            'lapLastLapTime': 'last_lap_time'
         }
-        
         for telemetry_key, coaching_key in field_map.items():
             if telemetry_key in telemetry_data:
                 transformed[coaching_key] = telemetry_data[telemetry_key]
-        
-        # Convert percentages if needed (telemetry service may use 0-1 range)
-        if 'brake_pct' in transformed and transformed['brake_pct'] <= 1.0:
-            transformed['brake_pct'] *= 100
-            
-        if 'throttle_pct' in transformed and transformed['throttle_pct'] <= 1.0:
-            transformed['throttle_pct'] *= 100
-        
         # Add session context
         transformed['track_name'] = self.session_state.track_name
         transformed['car_name'] = self.session_state.car_name
         transformed['session_type'] = 'practice'  # Default, could be enhanced
-        
         # Add timestamp
         transformed['timestamp'] = time.time()
-        
         # Check for lap completion
-        if 'LapCompleted' in telemetry_data and telemetry_data['LapCompleted']:
+        if 'lapCompleted' in telemetry_data and telemetry_data['lapCompleted']:
             transformed['lap_completed'] = True
-            
         return transformed
     
     def _map_priority_to_number(self, priority):
@@ -314,6 +301,7 @@ class CoachingDataService:
             
             if message_type == "telemetry":
                 telemetry_data = data.get("data", {})
+                logger.info(f"handle_telemetry_message: telemetry_data = {telemetry_data}")
                 self.latest_telemetry = telemetry_data
                 
                 # Debug logging
@@ -361,8 +349,7 @@ class CoachingDataService:
                 # Log session changes
                 track_name = session_data.get('trackName', 'Unknown Track')
                 car_name = session_data.get('carName', 'Unknown Car')
-                logger.info(f"Session update: Track='{track_name}', Car='{car_name}'")
-                
+               
         except Exception as e:
             logger.error(f"Error handling session message: {e}")
     

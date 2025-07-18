@@ -226,7 +226,7 @@ class RemoteAICoach:
             self.update_stats(False, 0)
             return None
     
-    async def make_api_request(self, prompt: str) -> Optional[Dict[str, Any]]:
+    async def make_api_request(self, prompt: str, system_prompt: Optional[str] = None, max_tokens: int = 150) -> Optional[Dict[str, Any]]:
         """Make request to OpenAI API"""
         
         if not self.rate_limiter.can_make_request():
@@ -242,19 +242,22 @@ class RemoteAICoach:
             'Content-Type': 'application/json'
         }
         
+        # Use provided system prompt or default coaching prompt
+        system_content = system_prompt if system_prompt is not None else 'You are an expert GT3 racing coach. Provide concise, actionable advice.'
+        
         payload = {
             'model': self.model,
             'messages': [
                 {
                     'role': 'system',
-                    'content': 'You are an expert GT3 racing coach. Provide concise, actionable advice.'
+                    'content': system_content
                 },
                 {
                     'role': 'user',
                     'content': prompt
                 }
             ],
-            'max_tokens': 150,  # Keep responses concise
+            'max_tokens': max_tokens,  # Use provided token limit
             'temperature': 0.7,
             'presence_penalty': 0.1
         }
@@ -289,6 +292,39 @@ class RemoteAICoach:
             return None
         except Exception as e:
             logger.error(f"API request error: {e}")
+            return None
+    
+    async def generate_raw(self, prompt: str, system_prompt: str = "You are a helpful assistant.", max_tokens: int = 150) -> Optional[Dict[str, Any]]:
+        """Generate raw response without coaching context"""
+        
+        if not self.is_available():
+            logger.debug("AI coach not available (API key or rate limit)")
+            return None
+        
+        try:
+            start_time = time.time()
+            
+            # Make API request with custom system prompt and token limit
+            response = await self.make_api_request(prompt, system_prompt, max_tokens)
+            
+            if response:
+                # Record successful request
+                response_time = time.time() - start_time
+                self.update_stats(True, response_time)
+                
+                return {
+                    'message': response['content'],
+                    'category': 'raw_response',
+                    'confidence': 0.9,
+                    'response_time': response_time
+                }
+            else:
+                self.update_stats(False, 0)
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error generating raw response: {e}")
+            self.update_stats(False, 0)
             return None
     
     def categorize_response(self, response_content: str) -> str:

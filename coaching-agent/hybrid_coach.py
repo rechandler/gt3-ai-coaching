@@ -24,6 +24,7 @@ from track_metadata_manager import TrackMetadataManager
 from segment_analyzer import SegmentAnalyzer
 from rich_context_builder import RichContextBuilder, EventContext
 from reference_manager import ReferenceManager
+from micro_analysis import MicroAnalyzer, ReferenceDataManager
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,7 @@ class CoachingContext:
     coaching_mode: CoachingMode = CoachingMode.INTERMEDIATE
 
 class HybridCoachingAgent:
-    """Main coaching agent that orchestrates local ML and remote AI"""
+    """Hybrid coaching agent combining local ML and remote AI"""
     LLM_DEBOUNCE_SECONDS = 1.0
 
     def __init__(self, config: Dict[str, Any]):
@@ -103,6 +104,10 @@ class HybridCoachingAgent:
         self.telemetry_analyzer = TelemetryAnalyzer()
         self.session_manager = SessionManager()
         self.decision_engine = DecisionEngine()
+        
+        # Initialize micro-analysis system
+        self.reference_manager = ReferenceDataManager()
+        self.micro_analyzer = MicroAnalyzer(self.reference_manager)
         
         # Track metadata manager for segment-based analysis
         self.track_metadata_manager = TrackMetadataManager()
@@ -149,69 +154,44 @@ class HybridCoachingAgent:
         """Process incoming telemetry data"""
         if not self.is_active:
             return
+        
         try:
-            # Update context
-            self.update_context(telemetry_data)
-            
-            # Add telemetry to rich context builder
-            self.rich_context_builder.add_telemetry(telemetry_data)
-            
-            # Load reference laps for current track/car if not already loaded
-            track_name = telemetry_data.get('track_name')
-            car_name = telemetry_data.get('car_name')
-            if track_name and car_name and (track_name != self.current_track_name or car_name != self.context.car_name):
-                self.reference_manager.load_reference_laps(track_name, car_name)
-            
-            # --- Track metadata integration ---
+            # Update track metadata if needed
             track_name = telemetry_data.get('track_name')
             if track_name and track_name != self.current_track_name:
-                # Ensure metadata is loaded
-                await self.track_metadata_manager.ensure_metadata_for_track(track_name, self.context)
-                segments = await self.track_metadata_manager.get_track_metadata(track_name)
-                if segments:
-                    self.segment_analyzer.update_track(track_name, segments)
+                await self.update_track_metadata(track_name)
                 self.current_track_name = track_name
             
-            # Buffer telemetry for segment analysis
+            # Process through micro-analyzer for corner-specific feedback
+            self.process_micro_analysis(telemetry_data)
+            
+            # Process through segment analyzer
             self.segment_analyzer.buffer_telemetry(telemetry_data)
             
-            # Get current segment/turn
-            lap_pct = telemetry_data.get('lapDistPct')
-            if lap_pct is not None and isinstance(track_name, str) and track_name:
-                self.current_segment = self.track_metadata_manager.get_segment_at_distance(track_name, lap_pct)
-                logger.debug(f"lap_pct: {lap_pct}, current_segment: {self.current_segment}")
-            else:
-                self.current_segment = None
-            logger.debug(f"Current segment: {self.current_segment}")
-            
-            # Analyze telemetry
+            # Process through telemetry analyzer
             analysis = self.telemetry_analyzer.analyze(telemetry_data)
             
-            # Get reference context for professional coaching
-            reference_context = self.reference_manager.get_reference_context(telemetry_data)
-            
-            # Add reference context to analysis
-            analysis['reference_context'] = reference_context
-            
+            # Get local ML insights
             local_insights = await self.local_coach.analyze(telemetry_data, analysis)
             
-            # Instead of processing each insight immediately, buffer them for batching
-            if local_insights:
-                logger.debug(f"Adding {len(local_insights)} insights to LLM buffer. Buffer size before: {len(self.llm_insight_buffer)}")
-                self.llm_insight_buffer.extend([
-                    (insight, telemetry_data.copy(), self.current_segment)
-                    for insight in local_insights
-                ])
-                logger.debug(f"Buffer size after: {len(self.llm_insight_buffer)}")
-                
-                # Start or reset debounce timer
-                if self.llm_debounce_task and not self.llm_debounce_task.done():
-                    logger.debug("Cancelling previous debounce task.")
-                    self.llm_debounce_task.cancel()
-                loop = asyncio.get_event_loop()
-                logger.debug("Starting new debounce task for LLM buffer.")
-                self.llm_debounce_task = loop.create_task(self._debounce_and_flush_llm_buffer())
-                
+            # Combine insights and generate coaching messages
+            all_insights = local_insights.copy()
+            
+            # Add micro-analysis insights if available
+            micro_insights = self.get_micro_analysis_insights()
+            if micro_insights:
+                all_insights.extend(micro_insights)
+            
+            # Generate coaching messages
+            if all_insights:
+                await self.generate_coaching_messages(all_insights, telemetry_data)
+            
+            # Update performance tracking
+            self.update_performance_metrics(telemetry_data, analysis)
+            
+            # Store telemetry for session (using rich context builder)
+            self.rich_context_builder.add_telemetry(telemetry_data)
+            
         except Exception as e:
             logger.error(f"Error processing telemetry: {e}")
 
@@ -446,6 +426,115 @@ class HybridCoachingAgent:
             self.context.lap_count = telemetry_data['lap_count']
         if 'best_lap_time' in telemetry_data:
             self.context.best_lap_time = telemetry_data['best_lap_time']
+    
+    async def update_track_metadata(self, track_name: str):
+        """Ensure metadata is loaded for the current track"""
+        await self.track_metadata_manager.ensure_metadata_for_track(track_name, self.context)
+        segments = await self.track_metadata_manager.get_track_metadata(track_name)
+        if segments:
+            self.segment_analyzer.update_track(track_name, segments)
+    
+    def process_micro_analysis(self, telemetry_data: Dict[str, Any]):
+        """Process telemetry through micro-analyzer"""
+        try:
+            # Get current segment for corner identification
+            lap_dist_pct = telemetry_data.get('lapDistPct', 0) # Changed from 'lap_distance_pct' to 'lapDistPct'
+            current_segment = self.segment_analyzer.get_current_segment(lap_dist_pct)
+            
+            if current_segment and current_segment['type'] == 'corner':
+                corner_id = f"{self.current_track_name}_{current_segment['name']}".replace(' ', '_').lower()
+                
+                # Start or continue corner analysis
+                if not self.micro_analyzer.current_corner_id:
+                    self.micro_analyzer.start_corner_analysis(telemetry_data, corner_id)
+                else:
+                    self.micro_analyzer.continue_corner_analysis(telemetry_data)
+            
+        except Exception as e:
+            logger.error(f"Error in micro-analysis: {e}")
+    
+    def get_micro_analysis_insights(self) -> List[Dict[str, Any]]:
+        """Get insights from recent micro-analysis"""
+        insights = []
+        
+        # Check if we have recent analysis
+        if self.micro_analyzer.analysis_history:
+            latest_analysis = self.micro_analyzer.analysis_history[-1]
+            
+            # Create insights from micro-analysis
+            if latest_analysis.specific_feedback:
+                insight = {
+                    'type': 'micro_analysis',
+                    'confidence': 0.9,  # High confidence for specific measurements
+                    'severity': self.get_severity_from_priority(latest_analysis.priority),
+                    'category': 'corner_technique',
+                    'message': latest_analysis.specific_feedback[0],  # Use first feedback item
+                    'data': {
+                        'corner_id': latest_analysis.corner_id,
+                        'corner_name': latest_analysis.corner_name,
+                        'brake_timing_delta': latest_analysis.brake_timing_delta,
+                        'throttle_timing_delta': latest_analysis.throttle_timing_delta,
+                        'apex_speed_delta': latest_analysis.apex_speed_delta,
+                        'total_time_loss': latest_analysis.total_time_loss,
+                        'detected_patterns': latest_analysis.detected_patterns,
+                        'all_feedback': latest_analysis.specific_feedback
+                    }
+                }
+                insights.append(insight)
+        
+        return insights
+    
+    def get_severity_from_priority(self, priority: str) -> float:
+        """Convert priority to severity score"""
+        priority_map = {
+            'critical': 0.9,
+            'high': 0.7,
+            'medium': 0.5,
+            'low': 0.3
+        }
+        return priority_map.get(priority, 0.5)
+
+    async def generate_coaching_messages(self, insights: List[Dict[str, Any]], telemetry_data: Dict[str, Any]):
+        """Generate coaching messages from insights using LLM"""
+        if not insights:
+            return
+        
+        # Group insights by type for better context
+        insight_groups = defaultdict(list)
+        for insight in insights:
+            situation = insight.get('situation', 'general')
+            insight_groups[situation].append(insight)
+        
+        for situation, group_insights in insight_groups.items():
+            # Use the most recent telemetry data for context
+            latest_telemetry = group_insights[-1][1]
+            latest_segment = group_insights[-1][2]
+            event_type = self._determine_event_type(situation)
+            
+            # Use rich context builder for advice context
+            advice_context = self.rich_context_builder.build_structured_context(
+                event_type=event_type,
+                telemetry_data=latest_telemetry,
+                context=self.context,
+                current_segment=latest_segment,
+                severity="medium"
+            )
+            
+            # Process each insight in the group
+            for insight in group_insights:
+                await self.process_insight_with_advice_context(
+                    insight, latest_telemetry, latest_segment, advice_context
+                )
+    
+    def update_performance_metrics(self, telemetry_data: Dict[str, Any], analysis: Dict[str, Any]):
+        """Update performance metrics based on telemetry and analysis"""
+        # This is a placeholder. In a real scenario, you'd track specific metrics
+        # like lap time, position, fuel, tire wear, etc.
+        self.performance_metrics['last_lap_time'].append(telemetry_data.get('lapTime'))
+        self.performance_metrics['current_position'].append(telemetry_data.get('currentPosition'))
+        self.performance_metrics['fuel_level'].append(telemetry_data.get('fuelLevel'))
+        self.performance_metrics['tire_condition'].append(telemetry_data.get('tireCondition'))
+        self.performance_metrics['weather_conditions'].append(telemetry_data.get('weatherConditions'))
     
     async def adapt_coaching_style(self):
         """Adapt coaching style based on session progress and user performance"""

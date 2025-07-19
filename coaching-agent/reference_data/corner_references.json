@@ -1,0 +1,70 @@
+{
+  "corners": [
+    {
+      "corner_id": "spa_francorchamps_eau_rouge",
+      "corner_name": "Eau Rouge",
+      "track_name": "Spa-Francorchamps",
+      "position_start": 0.03,
+      "position_end": 0.08,
+      "reference_brake_point": 0.035,
+      "reference_brake_pressure": 70.0,
+      "reference_entry_speed": 140.0,
+      "reference_apex_speed": 95.0,
+      "reference_exit_speed": 135.0,
+      "reference_throttle_point": 0.065,
+      "reference_throttle_pressure": 85.0,
+      "reference_steering_angle": 0.4,
+      "reference_racing_line": [
+        [
+          0.03,
+          0.0
+        ],
+        [
+          0.035,
+          0.2
+        ],
+        [
+          0.04,
+          0.4
+        ],
+        [
+          0.045,
+          0.4
+        ],
+        [
+          0.05,
+          0.3
+        ],
+        [
+          0.055,
+          0.2
+        ],
+        [
+          0.06,
+          0.1
+        ],
+        [
+          0.065,
+          0.0
+        ],
+        [
+          0.07,
+          0.0
+        ],
+        [
+          0.075,
+          0.0
+        ],
+        [
+          0.08,
+          0.0
+        ]
+      ],
+      "reference_corner_time": 4.2,
+      "reference_gear": 4,
+      "corner_type": "high_speed",
+      "difficulty": "hard",
+      "notes": "Famous uphill left-right complex"
+    }
+  ]
+}

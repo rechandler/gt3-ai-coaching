@@ -190,12 +190,12 @@ class PatternDetector:
         
         # Calculate lap time variation
         if len(lap_times) >= 3:
-            lap_variation = np.std(lap_times[-5:]) / np.mean(lap_times[-5:])
+            lap_variation = float(np.std(lap_times[-5:])) / float(np.mean(lap_times[-5:]))
             if lap_variation > self.thresholds['consistency_threshold']:
                 patterns.append(DrivingPattern(
                     name="inconsistent_lap_times",
                     confidence=0.9,
-                    severity=lap_variation * 2,  # Scale severity with variation
+                    severity=float(lap_variation * 2),  # Scale severity with variation
                     frequency=len(lap_times),
                     last_occurrence=time.time(),
                     description=f"Lap time variation: {lap_variation:.1%}"
@@ -297,7 +297,7 @@ class LocalMLCoach:
     
     async def analyze(self, telemetry_data: Dict[str, Any], 
                      analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Analyze telemetry and return coaching insights"""
+        """Analyze telemetry and return coaching insights with reference comparisons"""
         insights = []
         
         # Add to buffer
@@ -305,11 +305,15 @@ class LocalMLCoach:
         
         # Get recent data for pattern analysis
         recent_data = self.telemetry_buffer.get_recent(5.0)
+        
+        # Get reference context for professional coaching
+        reference_context = analysis.get('reference_context', {})
+        
         # Detect patterns
         braking_patterns = self.pattern_detector.detect_braking_patterns(recent_data)
         cornering_patterns = self.pattern_detector.detect_cornering_patterns(recent_data)
         
-        # Process patterns into insights
+        # Process patterns into insights with reference comparisons
         for pattern in braking_patterns + cornering_patterns:
             insight = {
                 'situation': pattern.name,
@@ -321,6 +325,28 @@ class LocalMLCoach:
                     'description': pattern.description
                 }
             }
+            
+            # Add reference context if available
+            if reference_context.get('reference_available'):
+                insight['reference_context'] = reference_context
+                insight['data'].update({
+                    'reference_type': reference_context.get('reference_type'),
+                    'delta_to_reference': reference_context.get('delta_to_reference', 0.0),
+                    'improvement_potential': reference_context.get('improvement_potential', 0.0)
+                })
+                
+                # Add reference speed comparisons
+                reference_speeds = reference_context.get('reference_speeds', {})
+                if reference_speeds:
+                    current_speed = telemetry_data.get('speed', 0)
+                    reference_entry = reference_speeds.get('entry_speed', 0)
+                    reference_exit = reference_speeds.get('exit_speed', 0)
+                    
+                    if current_speed < reference_entry * 0.9:
+                        insight['data']['speed_deficit'] = f"Entry speed {current_speed:.1f} vs reference {reference_entry:.1f}"
+                    if current_speed < reference_exit * 0.9:
+                        insight['data']['exit_deficit'] = f"Exit speed {current_speed:.1f} vs reference {reference_exit:.1f}"
+            
             # Add driver_issue for understeer/oversteer
             if pattern.name == 'understeer':
                 insight['data']['driver_issue'] = 'experiencing understeer'
@@ -337,12 +363,18 @@ class LocalMLCoach:
             )
             
             if sector_analysis['improvement_potential'] > 0:
-                insights.append({
+                sector_insight = {
                     'situation': 'sector_analysis',
                     'confidence': 0.8,
                     'importance': min(sector_analysis['improvement_potential'], 1.0),
                     'data': sector_analysis
-                })
+                }
+                
+                # Add reference context to sector analysis
+                if reference_context.get('reference_available'):
+                    sector_insight['reference_context'] = reference_context
+                
+                insights.append(sector_insight)
         
         # Check for lap completion
         if telemetry_data.get('lap_completed', False):
@@ -352,7 +384,7 @@ class LocalMLCoach:
                 consistency_patterns = self.pattern_detector.detect_consistency_patterns(self.lap_times)
                 
                 for pattern in consistency_patterns:
-                    insights.append({
+                    consistency_insight = {
                         'situation': pattern.name,
                         'confidence': pattern.confidence,
                         'importance': pattern.severity,
@@ -360,7 +392,13 @@ class LocalMLCoach:
                             'pattern': pattern.name,
                             'description': pattern.description
                         }
-                    })
+                    }
+                    
+                    # Add reference context to consistency analysis
+                    if reference_context.get('reference_available'):
+                        consistency_insight['reference_context'] = reference_context
+                    
+                    insights.append(consistency_insight)
         return insights
     
     async def generate_message(self, insight: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -383,7 +421,11 @@ class LocalMLCoach:
     
     def create_message_for_situation(self, situation: str, data: Dict[str, Any], 
                                    confidence: float) -> Optional[str]:
-        """Create a specific message for a situation"""
+        """Create a specific message for a situation with reference comparisons"""
+        
+        # Check for reference context
+        reference_context = data.get('reference_context', {})
+        has_reference = reference_context.get('reference_available', False)
         
         messages = {
             'insufficient_braking': [
@@ -417,6 +459,35 @@ class LocalMLCoach:
                 "Understeer: focus on getting the car rotated before adding throttle."
             ]
         }
+        
+        # Add reference-specific messages if available
+        if has_reference:
+            reference_type = reference_context.get('reference_type', 'reference')
+            delta = reference_context.get('delta_to_reference', 0.0)
+            improvement = reference_context.get('improvement_potential', 0.0)
+            
+            # Add reference-based messages
+            if situation == 'insufficient_braking':
+                messages['insufficient_braking'].extend([
+                    f"Compared to your {reference_type}: you're {delta:.2f}s slower. Focus on brake technique.",
+                    f"Your {reference_type} shows {improvement:.2f}s of improvement potential in braking zones."
+                ])
+            elif situation == 'early_throttle_in_corners':
+                messages['early_throttle_in_corners'].extend([
+                    f"Your {reference_type} shows better throttle timing. You're {delta:.2f}s slower in corners.",
+                    f"Focus on corner exit technique - your {reference_type} shows {improvement:.2f}s of potential."
+                ])
+            elif situation == 'sector_analysis':
+                messages['sector_analysis'].extend([
+                    f"Your {reference_type} shows {improvement:.2f}s of improvement potential in this sector.",
+                    f"Delta to {reference_type}: {delta:.2f}s. Focus on the key areas identified."
+                ])
+            
+            # Add speed deficit messages
+            if 'speed_deficit' in data:
+                messages[situation].append(f"Speed deficit: {data['speed_deficit']}")
+            if 'exit_deficit' in data:
+                messages[situation].append(f"Exit speed issue: {data['exit_deficit']}")
         
         # Select message based on tone
         if situation in messages:

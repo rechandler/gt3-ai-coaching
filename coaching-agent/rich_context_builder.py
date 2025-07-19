@@ -736,31 +736,3 @@ DRIVER INPUT TRACE (Last {len(event_context.driver_input_trace)} samples):
                 'technique': event_context.anomaly_scores.get('technique_anomaly', 0)
             }
         } 
-
-def build_advice_context(event_type: str, telemetry_data: dict, context: object, current_segment: dict = None, local_ml_coach=None) -> dict:
-    """
-    Modular utility to build a full advice context for LLM, ML, or logging.
-    - Builds structured context (JSON/dict)
-    - Optionally attaches ML analysis
-    - Returns a ready-to-use advice_context dict
-    """
-    builder = RichContextBuilder()
-    # Build structured context
-    structured_context = builder.build_structured_context(
-        event_type=event_type,
-        telemetry_data=telemetry_data,
-        context=context,
-        current_segment=current_segment,
-        severity="medium"  # Can be parameterized
-    )
-    # Optionally attach ML analysis
-    if local_ml_coach is not None:
-        ml_analysis = local_ml_coach.predict(
-            driver_inputs=structured_context['driver_inputs'],
-            car_state=structured_context['car_state'],
-            tire_state=structured_context['tire_state'],
-            reference=structured_context['reference'],
-            session=structured_context['session']
-        )
-        structured_context['ml_analysis'] = ml_analysis
-    return structured_context 

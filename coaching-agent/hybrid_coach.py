@@ -20,9 +20,10 @@ from remote_ai_coach import RemoteAICoach
 from message_queue import CoachingMessageQueue, MessagePriority, CoachingMessage
 from telemetry_analyzer import TelemetryAnalyzer
 from session_manager import SessionManager
-from track_metadata import TrackMetadataManager
+from track_metadata_manager import TrackMetadataManager
 from segment_analyzer import SegmentAnalyzer
-from rich_context_builder import RichContextBuilder, EventContext, build_advice_context
+from rich_context_builder import RichContextBuilder, EventContext
+from reference_manager import ReferenceManager
 
 logger = logging.getLogger(__name__)
 
@@ -104,11 +105,14 @@ class HybridCoachingAgent:
         self.decision_engine = DecisionEngine()
         
         # Track metadata manager for segment-based analysis
-        self.track_metadata_manager = TrackMetadataManager(self.remote_coach)
+        self.track_metadata_manager = TrackMetadataManager()
         self.segment_analyzer = SegmentAnalyzer(self.track_metadata_manager)
         
         # Rich context builder
         self.rich_context_builder = RichContextBuilder()
+        
+        # Reference manager for professional coaching comparisons
+        self.reference_manager = ReferenceManager()
         
         self.current_track_name = None
         self.current_segment = None
@@ -152,6 +156,12 @@ class HybridCoachingAgent:
             # Add telemetry to rich context builder
             self.rich_context_builder.add_telemetry(telemetry_data)
             
+            # Load reference laps for current track/car if not already loaded
+            track_name = telemetry_data.get('track_name')
+            car_name = telemetry_data.get('car_name')
+            if track_name and car_name and (track_name != self.current_track_name or car_name != self.context.car_name):
+                self.reference_manager.load_reference_laps(track_name, car_name)
+            
             # --- Track metadata integration ---
             track_name = telemetry_data.get('track_name')
             if track_name and track_name != self.current_track_name:
@@ -176,6 +186,13 @@ class HybridCoachingAgent:
             
             # Analyze telemetry
             analysis = self.telemetry_analyzer.analyze(telemetry_data)
+            
+            # Get reference context for professional coaching
+            reference_context = self.reference_manager.get_reference_context(telemetry_data)
+            
+            # Add reference context to analysis
+            analysis['reference_context'] = reference_context
+            
             local_insights = await self.local_coach.analyze(telemetry_data, analysis)
             
             # Instead of processing each insight immediately, buffer them for batching
@@ -227,13 +244,13 @@ class HybridCoachingAgent:
             latest_telemetry = group_insights[-1][1]
             latest_segment = group_insights[-1][2]
             event_type = self._determine_event_type(situation)
-            # Use modular advice context builder
-            advice_context = build_advice_context(
+            # Use rich context builder for advice context
+            advice_context = self.rich_context_builder.build_structured_context(
                 event_type=event_type,
                 telemetry_data=latest_telemetry,
                 context=self.context,
                 current_segment=latest_segment,
-                local_ml_coach=self.local_coach
+                severity="medium"
             )
             # Process each insight in the group
             for insight, telemetry_data, current_segment in group_insights:

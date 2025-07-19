@@ -1,0 +1,78 @@
+{
+  "personal_best": {
+    "track_name": "Spa-Francorchamps",
+    "car_name": "BMW M4 GT3",
+    "lap_time": 85.0,
+    "lap_type": "personal_best",
+    "timestamp": 1752965706.4566615,
+    "segments": {
+      "s1": {
+        "segment_id": "s1",
+        "segment_name": "Sector 1",
+        "start_pct": 0.0,
+        "end_pct": 0.33,
+        "segment_time": 28.5,
+        "entry_speed": 120.0,
+        "exit_speed": 110.0,
+        "min_speed": 80.0,
+        "max_speed": 130.0,
+        "avg_throttle": 60.0,
+        "avg_brake": 40.0,
+        "max_steering": 0.4,
+        "racing_line_score": 0.85,
+        "optimal_inputs": {
+          "optimal_entry_speed": 125.0,
+          "optimal_exit_speed": 115.0,
+          "optimal_throttle_application": 70.0,
+          "optimal_brake_release": 20.0
+        }
+      },
+      "s2": {
+        "segment_id": "s2",
+        "segment_name": "Sector 2",
+        "start_pct": 0.33,
+        "end_pct": 0.66,
+        "segment_time": 29.0,
+        "entry_speed": 110.0,
+        "exit_speed": 125.0,
+        "min_speed": 90.0,
+        "max_speed": 140.0,
+        "avg_throttle": 80.0,
+        "avg_brake": 20.0,
+        "max_steering": 0.3,
+        "racing_line_score": 0.9,
+        "optimal_inputs": {
+          "optimal_entry_speed": 115.0,
+          "optimal_exit_speed": 130.0,
+          "optimal_throttle_application": 85.0,
+          "optimal_brake_release": 15.0
+        }
+      },
+      "s3": {
+        "segment_id": "s3",
+        "segment_name": "Sector 3",
+        "start_pct": 0.66,
+        "end_pct": 1.0,
+        "segment_time": 27.5,
+        "entry_speed": 125.0,
+        "exit_speed": 135.0,
+        "min_speed": 100.0,
+        "max_speed": 150.0,
+        "avg_throttle": 90.0,
+        "avg_brake": 10.0,
+        "max_steering": 0.2,
+        "racing_line_score": 0.88,
+        "optimal_inputs": {
+          "optimal_entry_speed": 130.0,
+          "optimal_exit_speed": 140.0,
+          "optimal_throttle_application": 95.0,
+          "optimal_brake_release": 5.0
+        }
+      }
+    },
+    "metadata": {
+      "created_by": "test_script",
+      "description": "Sample reference lap for testing"
+    }
+  }
+}

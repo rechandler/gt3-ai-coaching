@@ -26,6 +26,7 @@ from rich_context_builder import RichContextBuilder, EventContext
 from reference_manager import ReferenceManager
 from micro_analysis import MicroAnalyzer, ReferenceDataManager
 from mistake_tracker import MistakeTracker, SessionSummary
+from lap_buffer_manager import LapBufferManager
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,9 @@ class HybridCoachingAgent:
         # Reference manager for professional coaching comparisons
         self.reference_manager = ReferenceManager()
         
+        # Lap buffer manager for accurate lap/sector tracking
+        self.lap_buffer_manager = LapBufferManager()
+        
         self.current_track_name = None
         self.current_segment = None
         
@@ -162,9 +166,19 @@ class HybridCoachingAgent:
         try:
             # Update track metadata if needed
             track_name = telemetry_data.get('track_name')
+            car_name = telemetry_data.get('car_name', 'Unknown Car')
             if track_name and track_name != self.current_track_name:
                 await self.update_track_metadata(track_name)
                 self.current_track_name = track_name
+            
+            # Update lap buffer manager with track/car info
+            if track_name and car_name:
+                self.lap_buffer_manager.update_track_info(track_name, car_name)
+            
+            # Buffer telemetry for lap/sector analysis
+            lap_event = self.lap_buffer_manager.buffer_telemetry(telemetry_data)
+            if lap_event:
+                await self.handle_lap_event(lap_event, telemetry_data)
             
             # Process through micro-analyzer for corner-specific feedback
             self.process_micro_analysis(telemetry_data)
@@ -691,6 +705,88 @@ class HybridCoachingAgent:
     def get_corner_analysis(self, corner_id: str) -> Dict[str, Any]:
         """Get detailed analysis for a specific corner"""
         return self.mistake_tracker.get_corner_analysis(corner_id)
+    
+    async def handle_lap_event(self, lap_event: Dict[str, Any], telemetry_data: Dict[str, Any]):
+        """Handle lap completion or sector events"""
+        try:
+            event_type = lap_event.get('type')
+            
+            if event_type == 'lap_completed':
+                lap_data = lap_event.get('lap_data')
+                if lap_data is None:
+                    logger.warning("Lap completed event received but no lap data")
+                    return
+                    
+                is_personal_best = lap_event.get('is_personal_best', False)
+                is_session_best = lap_event.get('is_session_best', False)
+                
+                # Create coaching message for lap completion
+                message_content = f"🏁 Lap {lap_data.lap_number} completed: {lap_data.lap_time:.3f}s"
+                
+                if is_personal_best:
+                    message_content += " 🏆 NEW PERSONAL BEST!"
+                elif is_session_best:
+                    message_content += " 🥇 New session best!"
+                
+                # Add sector analysis if available
+                if lap_data.sector_times:
+                    sector_times = [f"{t:.3f}s" for t in lap_data.sector_times]
+                    message_content += f" Sectors: {' | '.join(sector_times)}"
+                
+                # Queue the message
+                coaching_message = CoachingMessage(
+                    content=message_content,
+                    category="lap_timing",
+                    priority=MessagePriority.HIGH if is_personal_best else MessagePriority.MEDIUM,
+                    source="lap_buffer",
+                    confidence=1.0,
+                    context="lap_completion",
+                    timestamp=time.time()
+                )
+                await self.message_queue.add_message(coaching_message)
+                
+                # Update session manager
+                self.session_manager.add_lap_data(
+                    lap_data.lap_time,
+                    lap_data.sector_times,
+                    {'telemetry_count': len(lap_data.telemetry_points)}
+                )
+                
+                logger.info(f"Lap completed: {lap_data.lap_time:.3f}s")
+            
+            elif event_type == 'sector_completed':
+                sector_data = lap_event.get('sector_data')
+                if sector_data is None:
+                    logger.warning("Sector completed event received but no sector data")
+                    return
+                    
+                is_best_sector = lap_event.get('is_best_sector', False)
+                is_session_best_sector = lap_event.get('is_session_best_sector', False)
+                
+                # Create sector completion message
+                message_content = f"📊 Sector {sector_data.sector_number + 1}: {sector_data.sector_time:.3f}s"
+                
+                if is_best_sector:
+                    message_content += " 🏆 Best sector!"
+                elif is_session_best_sector:
+                    message_content += " 🥇 Session best sector!"
+                
+                # Queue the message
+                coaching_message = CoachingMessage(
+                    content=message_content,
+                    category="sector_timing",
+                    priority=MessagePriority.MEDIUM,
+                    source="lap_buffer",
+                    confidence=1.0,
+                    context="sector_completion",
+                    timestamp=time.time()
+                )
+                await self.message_queue.add_message(coaching_message)
+                
+                logger.info(f"Sector {sector_data.sector_number + 1} completed: {sector_data.sector_time:.3f}s")
+                
+        except Exception as e:
+            logger.error(f"Error handling lap event: {e}")
     
     def get_recent_mistakes(self, window_minutes: int = 10) -> List[Dict[str, Any]]:
         """Get recent mistakes from time window"""

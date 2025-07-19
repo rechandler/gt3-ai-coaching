@@ -13,6 +13,10 @@ import json
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from collections import deque
+import base64
+
+# Import the new RichContextBuilder
+from rich_context_builder import RichContextBuilder, EventContext
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +26,8 @@ class AICoachingRequest:
     insight: Dict[str, Any]
     telemetry_data: Dict[str, Any]
     context: Any  # CoachingContext
-    timestamp: float
+    rich_context: Optional[EventContext] = None  # New rich context field
+    timestamp: float = 0.0
 
 class RateLimiter:
     """Rate limiter for API requests"""
@@ -36,46 +41,62 @@ class RateLimiter:
         """Check if we can make a request"""
         current_time = time.time()
         
-        # Remove old requests outside the time window
+        # Remove old requests
         while self.requests and current_time - self.requests[0] > self.time_window:
             self.requests.popleft()
         
         return len(self.requests) < self.max_requests
     
     def record_request(self):
-        """Record a new request"""
+        """Record a request"""
         self.requests.append(time.time())
 
 class PromptBuilder:
-    """Builds prompts for the AI based on context and situation"""
+    """Builds prompts for the AI based on context and situation, using detailed segment data and rich context."""
     
     def __init__(self):
-        self.base_prompt = """You are an expert GT3 racing coach providing real-time coaching advice. 
-You have access to detailed telemetry data and should provide specific, actionable advice.
-
-Key principles:
-- Be concise and clear (1-2 sentences max)
-- Focus on the most important improvement
-- Use racing terminology appropriately
-- Be encouraging but direct
-- Provide specific numeric feedback when relevant
-
-Current session context:
-Track: {track_name}
-Car: {car_name}
-Session Type: {session_type}
-Coaching Mode: {coaching_mode}
-"""
-    
-    def build_prompt(self, insight: Dict[str, Any], telemetry_data: Dict[str, Any], 
-                    context: Any, current_segment: Any = None) -> str:
-        """Build a prompt for the AI, including segment/turn info if available"""
+        self.base_prompt = """You are an expert GT3 racing coach providing real-time, segment-specific coaching advice.\nYou have access to detailed telemetry and track segment data.\n\nKey principles:\n- Be concise and clear (1-2 sentences max)\n- Focus on the most important improvement\n- Use racing terminology appropriately\n- Be encouraging but direct\n- Provide specific numeric feedback when relevant\n\nCurrent session context:\nTrack: {track_name}\nCar: {car_name}\nSession Type: {session_type}\nCoaching Mode: {coaching_mode}\n"""
         
+        # Initialize rich context builder
+        self.rich_context_builder = RichContextBuilder()
+
+    def format_segment_info(self, segment: dict) -> str:
+        if not segment:
+            return ""
+        seg_name = segment.get('name', 'Unknown')
+        seg_type = segment.get('type', 'Unknown')
+        seg_desc = segment.get('description', '')
+        seg_start = segment.get('start_pct', None)
+        seg_end = segment.get('end_pct', None)
+        info = f"\nCurrent segment: {seg_name} ({seg_type})"
+        if seg_start is not None and seg_end is not None:
+            info += f" (lap %: {seg_start:.2f}-{seg_end:.2f})"
+        if seg_desc:
+            info += f"\nDescription: {seg_desc}"
+        info += ("\nProvide coaching advice specific to this segment, using its name and characteristics. "
+                 "Always refer to this segment by its name (e.g., 'Pouhon', 'Turn 4', 'Variante Ascari'), not just 'the corner'.")
+        return info
+
+    def build_prompt(self, insight: Dict[str, Any], telemetry_data: Dict[str, Any], 
+                    context: Any, current_segment: Any = None, rich_context: Optional[EventContext] = None,
+                    ml_analysis: Optional[Dict[str, Any]] = None) -> str:
+        """Build a prompt for the AI, including detailed segment info, rich context, and ML analysis if available"""
         situation = insight.get('situation', 'general')
-        confidence = insight.get('confidence', 0.0)
         data = insight.get('data', {})
         
-        # Base context
+        # Add telemetry to rich context builder
+        self.rich_context_builder.add_telemetry(telemetry_data)
+        
+        # Build rich context if not provided
+        if rich_context is None:
+            event_type = self._determine_event_type(situation, data)
+            rich_context = self.rich_context_builder.build_rich_context(
+                event_type=event_type,
+                telemetry_data=telemetry_data,
+                context=context,
+                current_segment=current_segment
+            )
+        
         prompt = self.base_prompt.format(
             track_name=getattr(context, 'track_name', 'Unknown'),
             car_name=getattr(context, 'car_name', 'Unknown'),
@@ -83,26 +104,30 @@ Coaching Mode: {coaching_mode}
             coaching_mode=getattr(context, 'coaching_mode', 'Intermediate')
         )
         
-        # Add segment/turn info if available
-        if current_segment:
-            seg_name = current_segment.get('name', 'Unknown')
-            seg_num = current_segment.get('number', '')
-            seg_range = current_segment.get('lap_percentage_range', None)
-            prompt += f"\nCurrent segment/turn: {seg_name}"
-            if seg_num:
-                prompt += f" (#{seg_num})"
-            if seg_range:
-                prompt += f" (lap %: {seg_range[0]}-{seg_range[1]})"
-            prompt += "\n"
-            # Explicitly request segment/turn-specific advice
-            prompt += "Provide coaching advice specific to this segment/turn, using its name and characteristics if possible.\n"
+        # Add rich context if available
+        if rich_context:
+            prompt += "\n" + self.rich_context_builder.format_for_prompt(rich_context)
         
-        # Add situation-specific context
+        # Add ML analysis if available
+        if ml_analysis:
+            prompt += "\nML Model Analysis (sub-advisor):\n" + json.dumps(ml_analysis, indent=2)
+        
+        # Add segment info if available
+        if current_segment:
+            prompt += self.format_segment_info(current_segment)
+        
+        # Add subjective driver issue if available
+        driver_issue = data.get('driver_issue')
+        if driver_issue:
+            prompt += f"\nDriver's Issue: {driver_issue}\n"
+        
+        # Add situation
         prompt += f"\nCurrent situation: {situation}\n"
+        confidence = insight.get('confidence', 0.5)
         prompt += f"Confidence level: {confidence:.1%}\n"
         
-        # Add telemetry context
-        if telemetry_data:
+        # Add telemetry context (simplified since we have rich context)
+        if telemetry_data and not rich_context:
             prompt += "\nCurrent telemetry:\n"
             relevant_keys = ['speed', 'brake_pct', 'throttle_pct', 'steering_angle', 
                            'lap_distance_pct', 'gear', 'rpm']
@@ -114,10 +139,54 @@ Coaching Mode: {coaching_mode}
         if data:
             prompt += f"\nSituation details: {json.dumps(data, indent=2)}\n"
         
-        # Add request for specific coaching
-        prompt += self.get_situation_specific_request(situation, data)
+        # Add request for specific coaching, tailored to segment type
+        prompt += self.get_segment_type_request(current_segment, situation, data)
+        
+        # Always end with explicit advice request
+        prompt += "\nWhat specific advice would you give to address this issue in this segment of the track?"
         
         return prompt
+    
+    def _determine_event_type(self, situation: str, data: Dict[str, Any]) -> str:
+        """Determine event type from situation and data"""
+        # Map situations to event types
+        situation_to_event = {
+            'insufficient_braking': 'late_braking',
+            'early_throttle_in_corners': 'early_throttle',
+            'inconsistent_lap_times': 'inconsistency',
+            'sector_analysis': 'sector_time_loss',
+            'corner_analysis': 'corner_technique',
+            'race_strategy': 'strategy',
+            'understeer': 'understeer',
+            'oversteer': 'oversteer',
+            'offtrack': 'offtrack',
+            'bad_exit': 'bad_exit',
+            'missed_apex': 'missed_apex'
+        }
+        
+        # Check for specific patterns in data
+        if 'pattern' in data:
+            pattern = data['pattern'].lower()
+            if 'understeer' in pattern:
+                return 'understeer'
+            elif 'oversteer' in pattern:
+                return 'oversteer'
+            elif 'offtrack' in pattern:
+                return 'offtrack'
+        
+        return situation_to_event.get(situation, 'general_technique')
+
+    def get_segment_type_request(self, segment: dict, situation: str, data: Dict[str, Any]) -> str:
+        """Get a coaching request tailored to the segment type and situation."""
+        seg_type = (segment or {}).get('type', '').lower() if segment else ''
+        if seg_type == 'corner':
+            return "\nFocus on braking, turn-in, apex, and exit technique for this corner."
+        elif seg_type == 'straight':
+            return "\nFocus on maximizing speed, optimal gear, and preparing for the next segment."
+        elif seg_type == 'chicane':
+            return "\nFocus on the best line and transitions through this chicane."
+        # Fallback to situation-specific
+        return self.get_situation_specific_request(situation, data)
     
     def get_situation_specific_request(self, situation: str, data: Dict[str, Any]) -> str:
         """Get situation-specific coaching request"""
@@ -146,11 +215,31 @@ Focus on the specific corner and technique improvements.""",
             
             'race_strategy': """
 Provide strategic racing advice considering the current race situation.
-Focus on positioning, tire management, and race tactics."""
+Focus on positioning, tire management, and race tactics.""",
+            
+            'understeer': """
+Provide coaching advice for understeer correction.
+Focus on weight transfer, brake technique, and line adjustment.""",
+            
+            'oversteer': """
+Provide coaching advice for oversteer correction.
+Focus on throttle control, steering technique, and car balance.""",
+            
+            'offtrack': """
+Provide coaching advice for offtrack recovery and prevention.
+Focus on track limits awareness and corner entry technique.""",
+            
+            'bad_exit': """
+Provide coaching advice for improving corner exit speed.
+Focus on apex timing, throttle application, and exit line.""",
+            
+            'missed_apex': """
+Provide coaching advice for hitting the correct apex.
+Focus on turn-in point, braking technique, and racing line."""
         }
         
         return requests.get(situation, """
-Provide general coaching advice based on the current situation and telemetry data.
+Provide specific coaching advice based on the current situation and telemetry data.
 Focus on the most important area for improvement.""")
 
 class RemoteAICoach:
@@ -189,8 +278,10 @@ class RemoteAICoach:
     
     async def generate_coaching(self, insight: Dict[str, Any], 
                               telemetry_data: Dict[str, Any], 
-                              context: Any, current_segment: Any = None) -> Optional[Dict[str, Any]]:
-        """Generate coaching advice using AI, including segment/turn info if available"""
+                              context: Any, current_segment: Any = None,
+                              rich_context: Optional[EventContext] = None,
+                              ml_analysis: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        """Generate coaching advice using AI, including segment/turn info, rich context, and ML analysis if available."""
         
         if not self.is_available():
             logger.debug("AI coach not available (API key or rate limit)")
@@ -199,8 +290,13 @@ class RemoteAICoach:
         try:
             start_time = time.time()
             
-            # Build prompt (now includes segment/turn info)
-            prompt = self.prompt_builder.build_prompt(insight, telemetry_data, context, current_segment=current_segment)
+            # Build prompt (now includes segment/turn info, rich context, and ML analysis)
+            prompt = self.prompt_builder.build_prompt(
+                insight, telemetry_data, context, 
+                current_segment=current_segment, 
+                rich_context=rich_context,
+                ml_analysis=ml_analysis
+            )
             
             # Make API request
             response = await self.make_api_request(prompt)
@@ -212,10 +308,12 @@ class RemoteAICoach:
                 
                 return {
                     'message': response['content'],
+                    'audio': response.get('audio'),
                     'category': self.categorize_response(response['content']),
                     'confidence': 0.9,  # AI responses have high confidence
                     'reasoning': response.get('reasoning', ''),
-                    'response_time': response_time
+                    'response_time': response_time,
+                    'rich_context_used': rich_context is not None
                 }
             else:
                 self.update_stats(False, 0)
@@ -227,7 +325,7 @@ class RemoteAICoach:
             return None
     
     async def make_api_request(self, prompt: str, system_prompt: Optional[str] = None, max_tokens: int = 150) -> Optional[Dict[str, Any]]:
-        """Make request to OpenAI API"""
+        """Make request to OpenAI API, then (optionally) generate audio using TTS endpoint."""
         
         if not self.rate_limiter.can_make_request():
             self.stats['rate_limited_requests'] += 1
@@ -273,12 +371,43 @@ class RemoteAICoach:
                     
                     if response.status == 200:
                         result = await response.json()
-                        
                         if 'choices' in result and len(result['choices']) > 0:
                             content = result['choices'][0]['message']['content'].strip()
-                            
+                            # Now, generate audio using TTS endpoint
+                            audio_data = None
+                            try:
+                                tts_headers = {
+                                    'Authorization': f'Bearer {self.api_key}',
+                                    'Content-Type': 'application/json'
+                                }
+                                tts_payload = {
+                                    'model': 'tts-1',
+                                    'input': content,
+                                    'voice': 'alloy',
+                                    'response_format': 'mp3'
+                                }
+                                async with session.post(
+                                    'https://api.openai.com/v1/audio/speech',
+                                    headers=tts_headers,
+                                    json=tts_payload,
+                                    timeout=aiohttp.ClientTimeout(total=15)
+                                ) as tts_response:
+                                    if tts_response.status == 200:
+                                        audio_bytes = await tts_response.read()
+                                        audio_data = base64.b64encode(audio_bytes).decode('utf-8')
+                                        if audio_data:
+                                            logger.info(f"TTS audio generated, length: {len(audio_data)} base64 chars")
+                                            logger.info(f"TTS audio base64 (first 100 chars): {audio_data[:100]}")
+                                        else:
+                                            logger.warning("No audio data generated by TTS")
+                                    else:
+                                        error = await tts_response.text()
+                                        logger.error(f"TTS error: {error}")
+                            except Exception as tts_exc:
+                                logger.error(f"TTS request failed: {tts_exc}")
                             return {
                                 'content': content,
+                                'audio': audio_data,
                                 'model': self.model,
                                 'tokens_used': result.get('usage', {}).get('total_tokens', 0)
                             }
@@ -288,7 +417,7 @@ class RemoteAICoach:
                         return None
                         
         except asyncio.TimeoutError:
-            logger.error("API request timed out")
+            logger.error("OpenAI API request timed out.")
             return None
         except Exception as e:
             logger.error(f"API request error: {e}")

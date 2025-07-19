@@ -321,6 +321,11 @@ class LocalMLCoach:
                     'description': pattern.description
                 }
             }
+            # Add driver_issue for understeer/oversteer
+            if pattern.name == 'understeer':
+                insight['data']['driver_issue'] = 'experiencing understeer'
+            elif pattern.name == 'oversteer':
+                insight['data']['driver_issue'] = 'experiencing oversteer'
             insights.append(insight)
         
         # Analyze sector performance if available
@@ -467,6 +472,49 @@ class LocalMLCoach:
             'coaching_focus': self.coaching_focus,
             'best_lap': min(self.lap_times) if self.lap_times else 0
         }
+
+    def predict(self, driver_inputs, car_state, tire_state, reference, session):
+        """
+        Predict expected/optimal driver input profiles and flag anomalies.
+        Returns a dict suitable for 'ml_analysis' in the advice context.
+        """
+        # Example: Compare actual vs. reference, flag anomalies
+        ml_analysis = {
+            'anomaly_score': 0.0,
+            'anomaly_type': None,
+            'expected_profile': {},
+            'deviation': {},
+            'significant': False
+        }
+        # Example: Check for late braking (brake applied later than expected)
+        if 'brake' in driver_inputs and 'brake' in reference:
+            actual_brake = driver_inputs['brake']
+            expected_brake = reference.get('brake', actual_brake)
+            if len(actual_brake) > 0 and len(expected_brake) > 0:
+                # Simple anomaly: mean brake timing difference
+                brake_diff = sum(actual_brake) / len(actual_brake) - sum(expected_brake) / len(expected_brake)
+                ml_analysis['deviation']['brake_timing'] = f"{brake_diff:+.2f}s"
+                if brake_diff > 0.1:
+                    ml_analysis['anomaly_type'] = 'late_brake'
+                    ml_analysis['anomaly_score'] = min(abs(brake_diff), 1.0)
+                    ml_analysis['significant'] = True
+        # Example: Compare apex speed
+        if 'speed_kph' in car_state and 'best_apex_speed' in reference:
+            actual_apex = min(car_state['speed_kph']) if car_state['speed_kph'] else 0
+            optimal_apex = reference['best_apex_speed']
+            speed_deficit = optimal_apex - actual_apex
+            ml_analysis['deviation']['apex_speed_deficit'] = speed_deficit
+            if speed_deficit > 5:
+                ml_analysis['anomaly_type'] = 'low_apex_speed'
+                ml_analysis['anomaly_score'] = min(speed_deficit / 10, 1.0)
+                ml_analysis['significant'] = True
+        # Add expected profile (could be from a real ML model)
+        ml_analysis['expected_profile'] = {
+            'brake': reference.get('brake', []),
+            'throttle': reference.get('throttle', []),
+            'speed_kph': [reference.get('best_apex_speed', 0)]
+        }
+        return ml_analysis
 
 # Testing
 async def test_local_coach():

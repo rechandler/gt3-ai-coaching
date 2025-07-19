@@ -78,106 +78,6 @@
       "description": "Long straight to finish"
     }
   ],
-  "N\u00fcrburgring Grand Prix": [
-    {
-      "name": "Turn 1",
-      "start_pct": 0.0,
-      "end_pct": 0.05,
-      "type": "corner",
-      "description": "Tight right-hander"
-    },
-    {
-      "name": "Turn 2",
-      "start_pct": 0.05,
-      "end_pct": 0.12,
-      "type": "corner",
-      "description": "Medium-speed left-hander"
-    },
-    {
-      "name": "Turn 3",
-      "start_pct": 0.12,
-      "end_pct": 0.18,
-      "type": "corner",
-      "description": "High-speed right-hander"
-    },
-    {
-      "name": "Turn 4",
-      "start_pct": 0.18,
-      "end_pct": 0.25,
-      "type": "corner",
-      "description": "Medium-speed left-hander"
-    },
-    {
-      "name": "Turn 5",
-      "start_pct": 0.25,
-      "end_pct": 0.32,
-      "type": "corner",
-      "description": "Tight right-hander"
-    },
-    {
-      "name": "Turn 6",
-      "start_pct": 0.32,
-      "end_pct": 0.4,
-      "type": "corner",
-      "description": "Medium-speed left-hander"
-    },
-    {
-      "name": "Turn 7",
-      "start_pct": 0.4,
-      "end_pct": 0.48,
-      "type": "corner",
-      "description": "High-speed right-hander"
-    },
-    {
-      "name": "Turn 8",
-      "start_pct": 0.48,
-      "end_pct": 0.55,
-      "type": "corner",
-      "description": "Medium-speed left-hander"
-    },
-    {
-      "name": "Turn 9",
-      "start_pct": 0.55,
-      "end_pct": 0.62,
-      "type": "corner",
-      "description": "Tight right-hander"
-    },
-    {
-      "name": "Turn 10",
-      "start_pct": 0.62,
-      "end_pct": 0.7,
-      "type": "corner",
-      "description": "Medium-speed left-hander"
-    },
-    {
-      "name": "Turn 11",
-      "start_pct": 0.7,
-      "end_pct": 0.78,
-      "type": "corner",
-      "description": "High-speed right-hander"
-    },
-    {
-      "name": "Turn 12",
-      "start_pct": 0.78,
-      "end_pct": 0.85,
-      "type": "corner",
-      "description": "Medium-speed left-hander"
-    },
-    {
-      "name": "Turn 13",
-      "start_pct": 0.85,
-      "end_pct": 0.92,
-      "type": "corner",
-      "description": "Tight right-hander"
-    },
-    {
-      "name": "Turn 14",
-      "start_pct": 0.92,
-      "end_pct": 1.0,
-      "type": "corner",
-      "description": "Medium-speed left-hander to finish"
-    }
-  ],
   "Monza": [
     {
       "name": "Variante del Rettifilo",
@@ -249,63 +149,63 @@
       "start_pct": 0.0,
       "end_pct": 0.1,
       "type": "corner",
-      "description": "Sharp right-hander"
+      "description": "Sharp left-hander at the start"
     },
     {
       "name": "Straight 1",
       "start_pct": 0.1,
       "end_pct": 0.2,
       "type": "straight",
-      "description": "Long straight stretch"
-    },
-    {
-      "name": "Chicane 1",
-      "start_pct": 0.2,
-      "end_pct": 0.3,
-      "type": "chicane",
-      "description": "Slight left-right chicane"
+      "description": "Initial straight after turn 1"
     },
     {
       "name": "Turn 2",
+      "start_pct": 0.2,
+      "end_pct": 0.3,
+      "type": "corner",
+      "description": "Sweeping right turn"
+    },
+    {
+      "name": "Chicane",
       "start_pct": 0.3,
       "end_pct": 0.4,
-      "type": "corner",
-      "description": "Hairpin left"
+      "type": "chicane",
+      "description": "Left-right chicane sequence"
     },
     {
       "name": "Straight 2",
       "start_pct": 0.4,
       "end_pct": 0.6,
       "type": "straight",
-      "description": "High-speed straight"
+      "description": "Long straight section"
     },
     {
       "name": "Turn 3",
       "start_pct": 0.6,
       "end_pct": 0.7,
       "type": "corner",
-      "description": "Double-apex right-hander"
+      "description": "Hairpin left turn"
     },
     {
       "name": "Straight 3",
       "start_pct": 0.7,
       "end_pct": 0.8,
       "type": "straight",
-      "description": "Short straight section"
+      "description": "Short straight before final turns"
     },
     {
       "name": "Turn 4",
       "start_pct": 0.8,
       "end_pct": 0.9,
       "type": "corner",
-      "description": "Sweeping left curve"
+      "description": "Double apex right-hander"
     },
     {
-      "name": "Straight 4",
+      "name": "Turn 5",
       "start_pct": 0.9,
       "end_pct": 1.0,
-      "type": "straight",
-      "description": "Final straight to finish line"
+      "type": "corner",
+      "description": "Final sharp left turn"
     }
   ],
   "Fuji Speedway": [
@@ -314,63 +214,49 @@
       "start_pct": 0.0,
       "end_pct": 0.1,
       "type": "corner",
-      "description": "Sharp right-hander, entry speed crucial"
-    },
-    {
-      "name": "Straight 1",
-      "start_pct": 0.1,
-      "end_pct": 0.2,
-      "type": "straight",
-      "description": "Full throttle, high-speed section"
-    },
-    {
-      "name": "Turn 2",
-      "start_pct": 0.2,
-      "end_pct": 0.3,
-      "type": "corner",
-      "description": "Sweeping left curve, late apex"
-    },
-    {
-      "name": "Straight 2",
-      "start_pct": 0.3,
-      "end_pct": 0.5,
-      "type": "straight",
-      "description": "Main straight, top speed zone"
-    },
-    {
-      "name": "Turn 3",
-      "start_pct": 0.5,
-      "end_pct": 0.6,
-      "type": "corner",
-      "description": "Hairpin right, heavy braking"
-    },
-    {
-      "name": "Straight 3",
-      "start_pct": 0.6,
-      "end_pct": 0.7,
-      "type": "straight",
-      "description": "Short straight, build momentum"
+      "description": "Sharp right-hander at the start"
     },
     {
       "name": "Turn 4",
-      "start_pct": 0.7,
+      "start_pct": 0.2,
+      "end_pct": 0.3,
+      "type": "corner",
+      "description": "Sweeping left-hander"
+    },
+    {
+      "name": "Dunlop Curve",
+      "start_pct": 0.4,
+      "end_pct": 0.5,
+      "type": "corner",
+      "description": "Double apex right-hand curve"
+    },
+    {
+      "name": "Hairpin",
+      "start_pct": 0.6,
+      "end_pct": 0.7,
+      "type": "corner",
+      "description": "Tight hairpin turn"
+    },
+    {
+      "name": "Spoon Curve",
+      "start_pct": 0.75,
       "end_pct": 0.8,
       "type": "corner",
-      "description": "Double apex left, exit elevation change"
+      "description": "Double apex left-hand curve"
     },
     {
-      "name": "Straight 4",
-      "start_pct": 0.8,
+      "name": "130R",
+      "start_pct": 0.85,
       "end_pct": 0.9,
-      "type": "straight",
-      "description": "Downhill straight, prepare for final turn"
+      "type": "corner",
+      "description": "High-speed sweeping corner"
     },
     {
-      "name": "Turn 5",
-      "start_pct": 0.9,
+      "name": "Final Chicane",
+      "start_pct": 0.95,
       "end_pct": 1.0,
-      "type": "corner",
-      "description": "Sharp right turn, entry speed important"
+      "type": "chicane",
+      "description": "Quick left-right chicane before the finish line"
     }
   ]
 }

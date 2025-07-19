@@ -72,6 +72,41 @@ class TrackMetadataManager:
                 return segment
         return None
 
+    async def get_track_metadata(self, track_name: str) -> Optional[List[Dict[str, Any]]]:
+        """Get track metadata for the specified track"""
+        if track_name == self.current_track_name:
+            return self.track_metadata
+        elif track_name in self._metadata_cache:
+            return self._metadata_cache[track_name]
+        else:
+            # Try to load metadata for this track
+            await self.ensure_metadata_for_track(track_name)
+            return self._metadata_cache.get(track_name)
+
+    def get_segment_at_distance(self, track_name: str, lap_dist_pct: float) -> Optional[Dict[str, Any]]:
+        """Get the segment at the specified lap distance percentage"""
+        if track_name != self.current_track_name:
+            # Try to get from cache
+            metadata = self._metadata_cache.get(track_name)
+            if not metadata:
+                return None
+        else:
+            metadata = self.track_metadata
+        
+        if not metadata:
+            return None
+        
+        # Convert to percentage
+        lap_pct = lap_dist_pct * 100
+        
+        # Find the segment that contains this lap percentage
+        for segment in metadata:
+            rng = segment.get('lap_percentage_range')
+            if rng and rng[0] <= lap_pct <= rng[1]:
+                return segment
+        
+        return None
+
     @staticmethod
     def _extract_json(text: str) -> Optional[List[Dict[str, Any]]]:
         """

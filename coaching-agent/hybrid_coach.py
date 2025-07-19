@@ -1,62 +1,76 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Hybrid GT3 Coaching Agent
-Combines local machine learning with remote AI for optimal coaching experience
+Hybrid Coaching Agent
+Combines local ML analysis with remote AI coaching
 """
 
 import asyncio
-import logging
 import time
-import json
-import numpy as np
-from typing import Dict, List, Optional, Any, Union
-from dataclasses import dataclass, field
-from collections import deque, defaultdict
-from enum import Enum
+import logging
 import inspect
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
+from collections import defaultdict
+from enum import Enum
 
+# Import components
 from local_ml_coach import LocalMLCoach
 from remote_ai_coach import RemoteAICoach
-from message_queue import CoachingMessageQueue, CoachingMessage, MessagePriority
+from message_queue import CoachingMessageQueue, MessagePriority, CoachingMessage
 from telemetry_analyzer import TelemetryAnalyzer
 from session_manager import SessionManager
-from track_metadata_manager import TrackMetadataManager
+from track_metadata import TrackMetadataManager
 from segment_analyzer import SegmentAnalyzer
+from rich_context_builder import RichContextBuilder, EventContext, build_advice_context
 
 logger = logging.getLogger(__name__)
 
 class CoachingMode(Enum):
-    """Different coaching modes"""
+    """Coaching modes"""
     BEGINNER = "beginner"
     INTERMEDIATE = "intermediate"
     ADVANCED = "advanced"
     RACE = "race"
-    PRACTICE = "practice"
 
 class DecisionEngine:
-    """Decides when to use local ML vs remote AI"""
+    """Makes decisions about when to use AI vs local coaching"""
     
     def __init__(self):
-        self.local_confidence_threshold = 0.8
-        self.ai_usage_limit = 5  # messages per minute
-        self.ai_usage_count = deque(maxlen=100)
+        self.ai_usage_count = []
+        self.last_ai_decision = 0
+        self.ai_usage_threshold = 0.3  # 30% of requests can use AI
+    
+    def should_use_ai(self, insight: Dict[str, Any], local_confidence: float) -> bool:
+        """Decide whether to use AI coaching"""
+        current_time = time.time()
         
-    def should_use_ai(self, situation: str, local_confidence: float, 
-                      message_importance: float) -> bool:
-        """Determine if we should use remote AI for this situation"""
-        # FORCED FOR TESTING: Always use AI
-        return True
-        # Original logic below (restore after testing):
-        # if local_confidence > self.local_confidence_threshold and message_importance < 0.5:
-        #     return False
-        # if situation in ["corner_analysis", "race_strategy", "technique_improvement"]:
-        #     return True
-        # current_time = time.time()
-        # recent_usage = len([t for t in self.ai_usage_count if current_time - t < 60])
-        # if recent_usage >= self.ai_usage_limit:
-        #     return False
-        # return local_confidence < 0.6 and message_importance > 0.7
+        # Clean old AI usage records (older than 1 hour)
+        self.ai_usage_count = [t for t in self.ai_usage_count if current_time - t < 3600]
+        
+        # Check if we're within AI usage limits
+        if len(self.ai_usage_count) / max(1, len(self.ai_usage_count) + 10) > self.ai_usage_threshold:
+            return False
+        
+        # Use AI for high-importance, low-confidence insights
+        importance = insight.get('importance', 0.5)
+        message_importance = importance * insight.get('confidence', 0.5)
+        
+        # AI for complex situations or when local confidence is low
+        if message_importance > 0.7 and local_confidence < 0.6:
+            return True
+        
+        # AI for specific event types that benefit from rich context
+        situation = insight.get('situation', '')
+        ai_beneficial_situations = [
+            'understeer', 'oversteer', 'offtrack', 'bad_exit', 
+            'missed_apex', 'sector_analysis', 'race_strategy'
+        ]
+        
+        if situation in ai_beneficial_situations and message_importance > 0.5:
+            return True
+        
+        return False
 
 @dataclass
 class CoachingContext:
@@ -75,7 +89,8 @@ class CoachingContext:
 
 class HybridCoachingAgent:
     """Main coaching agent that orchestrates local ML and remote AI"""
-    
+    LLM_DEBOUNCE_SECONDS = 1.0
+
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.context = CoachingContext()
@@ -87,15 +102,23 @@ class HybridCoachingAgent:
         self.telemetry_analyzer = TelemetryAnalyzer()
         self.session_manager = SessionManager()
         self.decision_engine = DecisionEngine()
+        
         # Track metadata manager for segment-based analysis
-        self.track_metadata_manager = TrackMetadataManager()
+        self.track_metadata_manager = TrackMetadataManager(self.remote_coach)
         self.segment_analyzer = SegmentAnalyzer(self.track_metadata_manager)
+        
+        # Rich context builder
+        self.rich_context_builder = RichContextBuilder()
+        
         self.current_track_name = None
         self.current_segment = None
+        
         # State tracking
         self.is_active = False
         self.last_telemetry_time = 0
         self.performance_metrics = defaultdict(list)
+        self.llm_insight_buffer = []
+        self.llm_debounce_task = None
         
         logger.info("Hybrid Coaching Agent initialized")
     
@@ -123,17 +146,17 @@ class HybridCoachingAgent:
         if not self.is_active:
             return
         try:
-            # --- LOGGING: Show raw telemetry_data ---
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"HybridCoachingAgent.process_telemetry: telemetry_data = {telemetry_data}")
-            # --- END LOGGING ---
             # Update context
             self.update_context(telemetry_data)
+            
+            # Add telemetry to rich context builder
+            self.rich_context_builder.add_telemetry(telemetry_data)
+            
             # --- Track metadata integration ---
             track_name = telemetry_data.get('track_name')
             if track_name and track_name != self.current_track_name:
-                # Load track metadata
+                # Ensure metadata is loaded
+                await self.track_metadata_manager.ensure_metadata_for_track(track_name, self.context)
                 segments = await self.track_metadata_manager.get_track_metadata(track_name)
                 if segments:
                     self.segment_analyzer.update_track(track_name, segments)
@@ -144,35 +167,120 @@ class HybridCoachingAgent:
             
             # Get current segment/turn
             lap_pct = telemetry_data.get('lapDistPct')
-            if lap_pct is not None:
-                self.current_segment = self.segment_analyzer.get_current_segment(lap_pct)
+            if lap_pct is not None and isinstance(track_name, str) and track_name:
+                self.current_segment = self.track_metadata_manager.get_segment_at_distance(track_name, lap_pct)
+                logger.debug(f"lap_pct: {lap_pct}, current_segment: {self.current_segment}")
             else:
                 self.current_segment = None
+            logger.debug(f"Current segment: {self.current_segment}")
+            
             # Analyze telemetry
             analysis = self.telemetry_analyzer.analyze(telemetry_data)
-            # Get local ML insights
             local_insights = await self.local_coach.analyze(telemetry_data, analysis)
-            # Process each insight
-            for insight in local_insights:
-                await self.process_insight(insight, telemetry_data, self.current_segment)
-            # --- REMOVED TEST MESSAGE ---
+            
+            # Instead of processing each insight immediately, buffer them for batching
+            if local_insights:
+                logger.debug(f"Adding {len(local_insights)} insights to LLM buffer. Buffer size before: {len(self.llm_insight_buffer)}")
+                self.llm_insight_buffer.extend([
+                    (insight, telemetry_data.copy(), self.current_segment)
+                    for insight in local_insights
+                ])
+                logger.debug(f"Buffer size after: {len(self.llm_insight_buffer)}")
+                
+                # Start or reset debounce timer
+                if self.llm_debounce_task and not self.llm_debounce_task.done():
+                    logger.debug("Cancelling previous debounce task.")
+                    self.llm_debounce_task.cancel()
+                loop = asyncio.get_event_loop()
+                logger.debug("Starting new debounce task for LLM buffer.")
+                self.llm_debounce_task = loop.create_task(self._debounce_and_flush_llm_buffer())
+                
         except Exception as e:
             logger.error(f"Error processing telemetry: {e}")
-    
-    async def process_insight(self, insight: Dict[str, Any], telemetry_data: Dict[str, Any], current_segment: Any = None):
-        """Process a coaching insight and decide on response"""
+
+    async def _debounce_and_flush_llm_buffer(self):
+        try:
+            logger.debug(f"Debounce timer started for {self.LLM_DEBOUNCE_SECONDS} seconds.")
+            await asyncio.sleep(self.LLM_DEBOUNCE_SECONDS)
+            await self.flush_llm_insight_buffer()
+        except asyncio.CancelledError:
+            logger.debug("Debounce task cancelled before flush.")
+            pass
+
+    async def flush_llm_insight_buffer(self):
+        """Process all buffered insights with rich context and ML sub-advisor"""
+        if not self.llm_insight_buffer:
+            logger.debug("No insights to flush.")
+            return
         
+        logger.debug(f"Flushing {len(self.llm_insight_buffer)} insights from buffer.")
+        
+        # Group insights by type for better context
+        insight_groups = defaultdict(list)
+        for insight, telemetry_data, current_segment in self.llm_insight_buffer:
+            situation = insight.get('situation', 'general')
+            insight_groups[situation].append((insight, telemetry_data, current_segment))
+        
+        # Process each group
+        for situation, group_insights in insight_groups.items():
+            # Use the most recent telemetry data for context
+            latest_telemetry = group_insights[-1][1]
+            latest_segment = group_insights[-1][2]
+            event_type = self._determine_event_type(situation)
+            # Use modular advice context builder
+            advice_context = build_advice_context(
+                event_type=event_type,
+                telemetry_data=latest_telemetry,
+                context=self.context,
+                current_segment=latest_segment,
+                local_ml_coach=self.local_coach
+            )
+            # Process each insight in the group
+            for insight, telemetry_data, current_segment in group_insights:
+                await self.process_insight_with_advice_context(
+                    insight, telemetry_data, current_segment, advice_context
+                )
+        
+        # Clear the buffer
+        self.llm_insight_buffer.clear()
+        logger.debug("LLM insight buffer flushed and cleared.")
+
+    def _determine_event_type(self, situation: str) -> str:
+        """Determine event type from situation"""
+        situation_to_event = {
+            'insufficient_braking': 'late_braking',
+            'early_throttle_in_corners': 'early_throttle',
+            'inconsistent_lap_times': 'inconsistency',
+            'sector_analysis': 'sector_time_loss',
+            'corner_analysis': 'corner_technique',
+            'race_strategy': 'strategy',
+            'understeer': 'understeer',
+            'oversteer': 'oversteer',
+            'offtrack': 'offtrack',
+            'bad_exit': 'bad_exit',
+            'missed_apex': 'missed_apex'
+        }
+        return situation_to_event.get(situation, 'general_technique')
+
+    async def process_insight_with_advice_context(self, insight: Dict[str, Any], 
+                                                  telemetry_data: Dict[str, Any],
+                                                  current_segment: Optional[Dict[str, Any]],
+                                                  advice_context: Dict[str, Any]):
+        """Process a single insight with modular advice context"""
         situation = insight.get('situation', 'general')
         confidence = insight.get('confidence', 0.0)
         importance = insight.get('importance', 0.5)
         
-        # Decide whether to use local or remote processing
-        use_ai = self.decision_engine.should_use_ai(situation, confidence, importance)
+        # Determine if we should use AI
+        should_use_ai = self.decision_engine.should_use_ai(insight, confidence)
         
-        if use_ai and self.remote_coach.is_available():
-            # Use remote AI for sophisticated analysis
+        if should_use_ai and self.remote_coach.is_available():
+            # Use AI with advice context (rich context and ML analysis included)
             ai_response = await self.remote_coach.generate_coaching(
-                insight, telemetry_data, self.context, current_segment=current_segment
+                insight, telemetry_data, self.context, 
+                current_segment=current_segment,
+                rich_context=None,  # Already included in advice_context if needed
+                ml_analysis=advice_context.get('ml_analysis')
             )
             
             if ai_response:
@@ -189,6 +297,10 @@ class HybridCoachingAgent:
                 
                 # Track AI usage
                 self.decision_engine.ai_usage_count.append(time.time())
+                
+                # Log rich context usage
+                if ai_response.get('rich_context_used', False):
+                    logger.info(f"AI coaching used rich context for {situation}")
         else:
             # Use local ML response
             local_response = await self.local_coach.generate_message(insight)
@@ -334,10 +446,7 @@ class HybridCoachingAgent:
             
             # Adjust AI usage based on effectiveness
             ai_effectiveness = self.calculate_ai_effectiveness()
-            if ai_effectiveness < 0.5:
-                self.decision_engine.local_confidence_threshold = 0.7  # Use AI less
-            else:
-                self.decision_engine.local_confidence_threshold = 0.8  # Use AI more
+            # Note: AI usage adjustment logic can be implemented here based on effectiveness
                 
         except Exception as e:
             logger.error(f"Error adapting coaching style: {e}")

@@ -93,6 +93,20 @@ const CoachingWidget = ({
                 MESSAGE_DISPLAY_TIME / 1000 - age
               );
 
+              // Audio playback: only for the newest message
+              const isNewest = index === 0;
+              let audioSrc = null;
+              if (msg.audio) {
+                if (msg.audio.startsWith('http')) {
+                  audioSrc = msg.audio;
+                } else if (msg.audio.startsWith('data:audio')) {
+                  audioSrc = msg.audio;
+                } else {
+                  // Assume base64-encoded audio/mp3
+                  audioSrc = `data:audio/mp3;base64,${msg.audio}`;
+                }
+              }
+
               return (
                 <div
                   key={msg.id}
@@ -128,6 +142,12 @@ const CoachingWidget = ({
                   <div className="text-sm text-gray-300 leading-relaxed">
                     {msg.message}
                   </div>
+                  {/* Audio playback for newest message only */}
+                  {isNewest && audioSrc && (
+                    <div className="mt-2">
+                      <audio src={audioSrc} controls autoPlay style={{ width: '100%' }} />
+                    </div>
+                  )}
                   {msg.secondaryMessages &&
                     msg.secondaryMessages.length > 0 && (
                       <div className="mt-2 space-y-1">
@@ -145,7 +165,7 @@ const CoachingWidget = ({
                     )}
                   {msg.improvementPotential && (
                     <div className="text-xs text-green-400 mt-2">
-                      Potential improvement:{" "}
+                      Potential improvement: {" "}
                       {msg.improvementPotential.toFixed(2)}s
                     </div>
                   )}

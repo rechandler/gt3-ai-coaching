@@ -100,6 +100,7 @@ export const useCoachingMessages = () => {
                 isNew: true,
                 secondaryMessages: message.data.secondary_messages || [],
                 improvementPotential: message.data.improvement_potential,
+                audio: message.data.audio || null, // Attach audio if present
               };
 
               // Update session info if provided

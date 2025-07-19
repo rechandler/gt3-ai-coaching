@@ -153,6 +153,14 @@ class TrackMetadataManager:
         logger.warning(f"⚠️ No metadata available for {track_name}")
         return None
     
+    async def ensure_metadata_for_track(self, track_name: str, context: Any = None):
+        """
+        Ensure metadata for the given track is loaded (from Firebase, local, or LLM).
+        """
+        if not track_name:
+            return
+        await self.get_track_metadata(track_name)
+    
     async def get_from_firebase(self, track_name: str) -> Optional[List[Dict]]:
         """Get track metadata from Firebase"""
         if not self.db or not FIREBASE_AVAILABLE:

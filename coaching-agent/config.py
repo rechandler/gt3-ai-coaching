@@ -24,7 +24,7 @@ DEFAULT_CONFIG = {
     },
     'remote_config': {
         'api_key': os.getenv('OPENAI_API_KEY', ''),
-        'model': 'gpt-3.5-turbo',
+        'model': 'gpt-4o',
         'max_requests_per_minute': 5,
         'max_tokens': 150,
         'temperature': 0.7,

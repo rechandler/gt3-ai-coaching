@@ -1,6 +1,7 @@
-const { app, BrowserWindow, screen, globalShortcut, Menu, Tray, dialog, nativeImage } = require('electron');
+const { app, BrowserWindow, screen, globalShortcut, Menu, Tray, dialog, nativeImage, ipcMain } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
+const { autoUpdater } = require('electron-updater');
 const EnhancedIRacingTelemetryServer = require('../src/telemetry-server');
 
 let overlayWindow;
@@ -24,6 +25,9 @@ function createTrayIcon() {
 function createOverlayWindow() {
   const { width, height } = screen.getPrimaryDisplay().bounds;
   
+  const isDev = process.env.ELECTRON_IS_DEV === 'true';
+  const isTransparentMode = process.env.TRANSPARENT_MODE === 'true';
+  
   overlayWindow = new BrowserWindow({
     width: width,
     height: height,
@@ -34,58 +38,51 @@ function createOverlayWindow() {
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
-    focusable: false, // Prevent stealing focus from the game
-    visibleOnAllWorkspaces: true, // Ensure visibility across workspaces
-    fullscreenable: false, // Prevent accidental fullscreen
+    focusable: isDev && !isTransparentMode, // Not focusable in transparent mode
+    visibleOnAllWorkspaces: true,
+    fullscreenable: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: isDev ? false : true,
+      allowRunningInsecureContent: isDev,
+      backgroundThrottling: false
     },
-    show: true // Start visible for debugging
+    show: true,
+    backgroundColor: 'rgba(0, 0, 0, 0)' // Explicitly set transparent background
   });
 
-  const isDev = process.env.ELECTRON_IS_DEV === 'true';
   const startUrl = isDev 
     ? 'http://localhost:3000' 
     : `file://${path.join(__dirname, '../build/index.html')}`;
   
+  console.log('Development mode:', isDev);
   console.log('Loading URL:', startUrl);
   overlayWindow.loadURL(startUrl);
   
   // Don't start with click-through for debugging
   // overlayWindow.setIgnoreMouseEvents(true, { forward: true });
   
-  // Show dev tools in development
-  if (isDev) {
+  // Show dev tools in development (but not in transparent mode or by default)
+  if (isDev && !isTransparentMode && process.env.SHOW_DEVTOOLS === 'true') {
     overlayWindow.webContents.openDevTools();
   }
   
   overlayWindow.webContents.on('did-finish-load', () => {
     console.log('Overlay loaded successfully');
+    
+    // Enable click-through mode by default in production or transparent mode
+    if (!isDev || isTransparentMode) {
+      setTimeout(() => {
+        overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+        console.log('Click-through mode enabled for gaming overlay');
+      }, 1000); // Small delay to ensure overlay is ready
+    }
   });
   
   overlayWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error('Failed to load overlay:', errorCode, errorDescription);
-  });
-
-  // Ensure overlay stays on top, especially important for fullscreen games
-  const ensureAlwaysOnTop = () => {
-    if (overlayWindow && !overlayWindow.isDestroyed()) {
-      overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1);
-      // For Windows, also set additional flags to ensure visibility over fullscreen apps
-      if (process.platform === 'win32') {
-        overlayWindow.setVisibleOnAllWorkspaces(true);
-      }
-    }
-  };
-
-  // Check every 5 seconds to ensure overlay stays on top
-  const alwaysOnTopInterval = setInterval(ensureAlwaysOnTop, 5000);
-  
-  // Clean up interval when window is closed
-  overlayWindow.on('closed', () => {
-    clearInterval(alwaysOnTopInterval);
   });
 }
 
@@ -124,6 +121,18 @@ function createTray() {
         }
       },
       { type: 'separator' },
+      {
+        label: 'Toggle DevTools',
+        click: () => {
+          if (overlayWindow) {
+            if (overlayWindow.webContents.isDevToolsOpened()) {
+              overlayWindow.webContents.closeDevTools();
+            } else {
+              overlayWindow.webContents.openDevTools();
+            }
+          }
+        }
+      },
       {
         label: 'Toggle Click-Through',
         click: () => {
@@ -294,6 +303,67 @@ function startTelemetryServer() {
     console.error('[Electron] Error starting telemetry server:', error);
   }
 }
+
+// IPC handlers for auto-updater and app info
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
+});
+
+ipcMain.handle('check-for-updates', () => {
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Skipping update check in development mode');
+    return false;
+  }
+  return autoUpdater.checkForUpdatesAndNotify();
+});
+
+ipcMain.handle('download-update', () => {
+  return autoUpdater.downloadUpdate();
+});
+
+ipcMain.handle('install-update', () => {
+  autoUpdater.quitAndInstall();
+});
+
+// Auto-updater events
+autoUpdater.on('checking-for-update', () => {
+  console.log('Checking for update...');
+});
+
+autoUpdater.on('update-available', (info) => {
+  console.log('Update available.');
+  if (overlayWindow) {
+    overlayWindow.webContents.send('update-available', info);
+  }
+});
+
+autoUpdater.on('update-not-available', (info) => {
+  console.log('Update not available.');
+});
+
+autoUpdater.on('error', (err) => {
+  console.log('Error in auto-updater. ' + err);
+  if (overlayWindow) {
+    overlayWindow.webContents.send('update-error', err.message);
+  }
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+  let log_message = "Download speed: " + progressObj.bytesPerSecond;
+  log_message = log_message + ' - Downloaded ' + progressObj.percent + '%';
+  log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
+  console.log(log_message);
+  if (overlayWindow) {
+    overlayWindow.webContents.send('download-progress', progressObj);
+  }
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  console.log('Update downloaded');
+  if (overlayWindow) {
+    overlayWindow.webContents.send('update-downloaded', info);
+  }
+});
 
 app.whenReady().then(() => {
   console.log('App ready, initializing...');

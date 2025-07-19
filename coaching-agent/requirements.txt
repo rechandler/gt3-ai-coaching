@@ -1,0 +1,15 @@
+# Core dependencies
+asyncio
+websockets
+numpy
+dataclasses
+
+# Firebase (optional)
+firebase-admin
+
+# Logging and utilities
+python-dateutil
+
+# For development/testing
+pytest
+pytest-asyncio

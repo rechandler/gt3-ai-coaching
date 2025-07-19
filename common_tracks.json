@@ -1,0 +1,262 @@
+{
+  "Spa-Francorchamps": [
+    {
+      "name": "La Source",
+      "start_pct": 0.0,
+      "end_pct": 0.03,
+      "type": "corner",
+      "description": "Tight right-hander after start/finish"
+    },
+    {
+      "name": "Eau Rouge",
+      "start_pct": 0.03,
+      "end_pct": 0.08,
+      "type": "corner",
+      "description": "Famous uphill left-right complex"
+    },
+    {
+      "name": "Kemmel Straight",
+      "start_pct": 0.08,
+      "end_pct": 0.15,
+      "type": "straight",
+      "description": "Long uphill straight"
+    },
+    {
+      "name": "Les Combes",
+      "start_pct": 0.15,
+      "end_pct": 0.22,
+      "type": "corner",
+      "description": "Medium-speed left-right chicane"
+    },
+    {
+      "name": "Bruxelles",
+      "start_pct": 0.22,
+      "end_pct": 0.28,
+      "type": "corner",
+      "description": "Medium-speed left-hander"
+    },
+    {
+      "name": "Pouhon",
+      "start_pct": 0.28,
+      "end_pct": 0.35,
+      "type": "corner",
+      "description": "High-speed double-left"
+    },
+    {
+      "name": "Fagnes",
+      "start_pct": 0.35,
+      "end_pct": 0.42,
+      "type": "corner",
+      "description": "Medium-speed right-hander"
+    },
+    {
+      "name": "Stavelot",
+      "start_pct": 0.42,
+      "end_pct": 0.48,
+      "type": "corner",
+      "description": "High-speed right-hander"
+    },
+    {
+      "name": "Blanchimont",
+      "start_pct": 0.48,
+      "end_pct": 0.55,
+      "type": "corner",
+      "description": "High-speed left-hander"
+    },
+    {
+      "name": "Bus Stop",
+      "start_pct": 0.55,
+      "end_pct": 0.62,
+      "type": "corner",
+      "description": "Tight chicane before final straight"
+    },
+    {
+      "name": "Final Straight",
+      "start_pct": 0.62,
+      "end_pct": 1.0,
+      "type": "straight",
+      "description": "Long straight to finish"
+    }
+  ],
+  "Monza": [
+    {
+      "name": "Variante del Rettifilo",
+      "start_pct": 0.0,
+      "end_pct": 0.08,
+      "type": "corner",
+      "description": "Tight chicane after start"
+    },
+    {
+      "name": "Curva Grande",
+      "start_pct": 0.08,
+      "end_pct": 0.15,
+      "type": "corner",
+      "description": "High-speed right-hander"
+    },
+    {
+      "name": "Variante della Roggia",
+      "start_pct": 0.15,
+      "end_pct": 0.22,
+      "type": "corner",
+      "description": "Medium-speed chicane"
+    },
+    {
+      "name": "Curva di Lesmo 1",
+      "start_pct": 0.22,
+      "end_pct": 0.28,
+      "type": "corner",
+      "description": "Medium-speed right-hander"
+    },
+    {
+      "name": "Curva di Lesmo 2",
+      "start_pct": 0.28,
+      "end_pct": 0.35,
+      "type": "corner",
+      "description": "Medium-speed left-hander"
+    },
+    {
+      "name": "Curva del Serraglio",
+      "start_pct": 0.35,
+      "end_pct": 0.42,
+      "type": "corner",
+      "description": "High-speed right-hander"
+    },
+    {
+      "name": "Variante Ascari",
+      "start_pct": 0.42,
+      "end_pct": 0.5,
+      "type": "corner",
+      "description": "Medium-speed chicane"
+    },
+    {
+      "name": "Curva Parabolica",
+      "start_pct": 0.5,
+      "end_pct": 0.58,
+      "type": "corner",
+      "description": "Long right-hander"
+    },
+    {
+      "name": "Final Straight",
+      "start_pct": 0.58,
+      "end_pct": 1.0,
+      "type": "straight",
+      "description": "Long straight to finish"
+    }
+  ],
+  "Unknown Track": [
+    {
+      "name": "Turn 1",
+      "start_pct": 0.0,
+      "end_pct": 0.1,
+      "type": "corner",
+      "description": "Sharp left-hander at the start"
+    },
+    {
+      "name": "Straight 1",
+      "start_pct": 0.1,
+      "end_pct": 0.2,
+      "type": "straight",
+      "description": "Initial straight after turn 1"
+    },
+    {
+      "name": "Turn 2",
+      "start_pct": 0.2,
+      "end_pct": 0.3,
+      "type": "corner",
+      "description": "Sweeping right turn"
+    },
+    {
+      "name": "Chicane",
+      "start_pct": 0.3,
+      "end_pct": 0.4,
+      "type": "chicane",
+      "description": "Left-right chicane sequence"
+    },
+    {
+      "name": "Straight 2",
+      "start_pct": 0.4,
+      "end_pct": 0.6,
+      "type": "straight",
+      "description": "Long straight section"
+    },
+    {
+      "name": "Turn 3",
+      "start_pct": 0.6,
+      "end_pct": 0.7,
+      "type": "corner",
+      "description": "Hairpin left turn"
+    },
+    {
+      "name": "Straight 3",
+      "start_pct": 0.7,
+      "end_pct": 0.8,
+      "type": "straight",
+      "description": "Short straight before final turns"
+    },
+    {
+      "name": "Turn 4",
+      "start_pct": 0.8,
+      "end_pct": 0.9,
+      "type": "corner",
+      "description": "Double apex right-hander"
+    },
+    {
+      "name": "Turn 5",
+      "start_pct": 0.9,
+      "end_pct": 1.0,
+      "type": "corner",
+      "description": "Final sharp left turn"
+    }
+  ],
+  "Fuji Speedway": [
+    {
+      "name": "Turn 1",
+      "start_pct": 0.0,
+      "end_pct": 0.1,
+      "type": "corner",
+      "description": "Sharp right-hander at the start"
+    },
+    {
+      "name": "Turn 4",
+      "start_pct": 0.2,
+      "end_pct": 0.3,
+      "type": "corner",
+      "description": "Sweeping left-hander"
+    },
+    {
+      "name": "Dunlop Curve",
+      "start_pct": 0.4,
+      "end_pct": 0.5,
+      "type": "corner",
+      "description": "Double apex right-hand curve"
+    },
+    {
+      "name": "Hairpin",
+      "start_pct": 0.6,
+      "end_pct": 0.7,
+      "type": "corner",
+      "description": "Tight hairpin turn"
+    },
+    {
+      "name": "Spoon Curve",
+      "start_pct": 0.75,
+      "end_pct": 0.8,
+      "type": "corner",
+      "description": "Double apex left-hand curve"
+    },
+    {
+      "name": "130R",
+      "start_pct": 0.85,
+      "end_pct": 0.9,
+      "type": "corner",
+      "description": "High-speed sweeping corner"
+    },
+    {
+      "name": "Final Chicane",
+      "start_pct": 0.95,
+      "end_pct": 1.0,
+      "type": "chicane",
+      "description": "Quick left-right chicane before the finish line"
+    }
+  ]
+}

@@ -6,7 +6,7 @@ body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
     sans-serif;
-  background: transparent;
+  background: transparent !important;
   overflow: hidden;
   color: white;
   /* Ensure body works in fullscreen mode */
@@ -15,7 +15,7 @@ body {
   left: 0;
   width: 100vw;
   height: 100vh;
-  z-index: 2147483647;
+  z-index: 1;
 }
 
 * {
@@ -25,10 +25,11 @@ body {
 #root {
   width: 100vw;
   height: 100vh;
+  background: transparent !important;
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 2147483647;
+  z-index: 1;
   pointer-events: none; /* Allow clicks to pass through to game */
 }
 
@@ -36,8 +37,18 @@ body {
 .widget-content,
 button,
 [role="button"],
-.draggable-widget {
+.draggable-widget,
+.widget-header {
   pointer-events: auto !important;
+}
+
+/* Ensure cursor styles work properly */
+.cursor-grab {
+  cursor: grab !important;
+}
+
+.cursor-grabbing {
+  cursor: grabbing !important;
 }
 
 /* Scrollbar styling for widgets */
@@ -56,4 +67,44 @@ button,
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.5);
+}
+
+/* Coaching message animations */
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+.animate-slideInDown {
+  animation: slideInDown 0.4s ease-out;
+}
+
+.animate-fadeOut {
+  animation: fadeOut 0.3s ease-in;
+}
+
+/* Smooth transitions for coaching messages */
+.coaching-message-container {
+  transition: all 0.3s ease-in-out;
+}
+
+.coaching-message-container:hover {
+  transform: translateX(2px);
 }

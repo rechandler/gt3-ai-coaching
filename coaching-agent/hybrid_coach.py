@@ -25,6 +25,7 @@ from segment_analyzer import SegmentAnalyzer
 from rich_context_builder import RichContextBuilder, EventContext
 from reference_manager import ReferenceManager
 from micro_analysis import MicroAnalyzer, ReferenceDataManager
+from mistake_tracker import MistakeTracker, SessionSummary
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,9 @@ class HybridCoachingAgent:
         self.reference_manager = ReferenceDataManager()
         self.micro_analyzer = MicroAnalyzer(self.reference_manager)
         
+        # Initialize mistake tracker
+        self.mistake_tracker = MistakeTracker()
+        
         # Track metadata manager for segment-based analysis
         self.track_metadata_manager = TrackMetadataManager()
         self.segment_analyzer = SegmentAnalyzer(self.track_metadata_manager)
@@ -181,6 +185,9 @@ class HybridCoachingAgent:
             micro_insights = self.get_micro_analysis_insights()
             if micro_insights:
                 all_insights.extend(micro_insights)
+            
+            # Track mistakes for persistent analysis
+            self.track_mistakes(analysis, micro_insights)
             
             # Generate coaching messages
             if all_insights:
@@ -583,6 +590,123 @@ class HybridCoachingAgent:
             'remote_coach_stats': self.remote_coach.get_stats(),
             'context': context_dict
         }
+
+    def track_mistakes(self, analysis: Dict[str, Any], micro_insights: List[Dict[str, Any]]):
+        """Track mistakes for persistent analysis"""
+        try:
+            # Get current corner information
+            current_segment = self.segment_analyzer.get_current_segment(
+                analysis.get('lap_distance_pct', 0)
+            )
+            
+            corner_id = None
+            corner_name = None
+            
+            if current_segment:
+                corner_id = f"{self.current_track_name}_{current_segment['name']}".replace(' ', '_').lower()
+                corner_name = current_segment['name']
+            
+            # Track mistakes from micro-analysis
+            for insight in micro_insights:
+                if insight.get('type') == 'micro_analysis':
+                    data = insight.get('data', {})
+                    if data.get('total_time_loss', 0) > 0.05:  # Only track significant mistakes
+                        self.mistake_tracker.add_mistake(
+                            analysis_data=data,
+                            corner_id=corner_id or "unknown",
+                            corner_name=corner_name or "Unknown Corner"
+                        )
+            
+            # Track mistakes from general analysis
+            if analysis.get('corner'):
+                corner_analysis = analysis['corner']
+                if corner_analysis.time_loss > 0.05:
+                    self.mistake_tracker.add_mistake(
+                        analysis_data={
+                            'total_time_loss': corner_analysis.time_loss,
+                            'brake_timing_delta': 0,  # Placeholder
+                            'throttle_timing_delta': 0,  # Placeholder
+                            'apex_speed_delta': 0,  # Placeholder
+                            'detected_patterns': []
+                        },
+                        corner_id=corner_id or "unknown",
+                        corner_name=corner_name or "Unknown Corner"
+                    )
+                    
+        except Exception as e:
+            logger.error(f"Error tracking mistakes: {e}")
+    
+    def get_persistent_mistakes(self) -> List[Dict[str, Any]]:
+        """Get persistent mistakes for coaching focus"""
+        persistent = self.mistake_tracker.get_persistent_mistakes()
+        
+        return [
+            {
+                'corner_name': pattern.corner_name,
+                'mistake_type': pattern.mistake_type,
+                'frequency': pattern.frequency,
+                'total_time_loss': pattern.total_time_loss,
+                'avg_time_loss': pattern.avg_time_loss,
+                'priority': pattern.priority,
+                'severity_trend': pattern.severity_trend,
+                'description': pattern.description
+            }
+            for pattern in persistent
+        ]
+    
+    def get_session_summary(self) -> Dict[str, Any]:
+        """Get comprehensive session summary with persistent mistakes"""
+        summary = self.mistake_tracker.get_session_summary()
+        
+        return {
+            'session_id': summary.session_id,
+            'session_duration': summary.session_end - summary.session_start,
+            'total_mistakes': summary.total_mistakes,
+            'total_time_lost': summary.total_time_lost,
+            'session_score': summary.session_score,
+            'most_common_mistakes': [
+                {
+                    'corner_name': pattern.corner_name,
+                    'mistake_type': pattern.mistake_type,
+                    'frequency': pattern.frequency,
+                    'total_time_loss': pattern.total_time_loss,
+                    'description': pattern.description
+                }
+                for pattern in summary.most_common_mistakes
+            ],
+            'most_costly_mistakes': [
+                {
+                    'corner_name': pattern.corner_name,
+                    'mistake_type': pattern.mistake_type,
+                    'frequency': pattern.frequency,
+                    'total_time_loss': pattern.total_time_loss,
+                    'description': pattern.description
+                }
+                for pattern in summary.most_costly_mistakes
+            ],
+            'improvement_areas': summary.improvement_areas,
+            'recommendations': summary.recommendations
+        }
+    
+    def get_corner_analysis(self, corner_id: str) -> Dict[str, Any]:
+        """Get detailed analysis for a specific corner"""
+        return self.mistake_tracker.get_corner_analysis(corner_id)
+    
+    def get_recent_mistakes(self, window_minutes: int = 10) -> List[Dict[str, Any]]:
+        """Get recent mistakes from time window"""
+        recent_mistakes = self.mistake_tracker.get_recent_mistakes(window_minutes)
+        
+        return [
+            {
+                'corner_name': mistake.corner_name,
+                'mistake_type': mistake.mistake_type,
+                'time_loss': mistake.time_loss,
+                'severity': mistake.severity,
+                'description': mistake.description,
+                'timestamp': mistake.timestamp
+            }
+            for mistake in recent_mistakes
+        ]
 
 async def maybe_await(result):
     if inspect.isawaitable(result):

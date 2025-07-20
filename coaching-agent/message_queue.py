@@ -46,12 +46,131 @@ class CoachingMessage:
     confidence: float
     context: str
     timestamp: float
+    audio: Optional[str] = None  # Base64 encoded audio data
     delivered: bool = False
     attempts: int = 0
     
     def __lt__(self, other):
         """For priority queue ordering"""
         return self.priority.value < other.priority.value
+
+class MessageCombiner:
+    """Combines similar messages into concise summaries"""
+    
+    def __init__(self, config: Dict[str, Any] = None):
+        # Get configuration or use defaults
+        message_config = config.get('message_config', {}) if config else {}
+        combination_config = message_config.get('message_combination', {})
+        
+        self.combination_window = combination_config.get('combination_window', 3.0)
+        self.min_keyword_matches = combination_config.get('min_keyword_matches', 2)
+        self.max_combined_messages = combination_config.get('max_combined_messages', 5)
+        self.enabled = combination_config.get('enabled', True)
+        
+        self.combination_patterns = {
+            'throttle': {
+                'keywords': ['throttle', 'patience', 'corner', 'exit', 'balance', 'understeer'],
+                'combine_template': "Focus on throttle patience: {summary}",
+                'summary_template': "Wait longer before applying throttle in corners for better balance and exit speed."
+            },
+            'braking': {
+                'keywords': ['brake', 'earlier', 'later', 'pressure', 'timing', 'entry'],
+                'combine_template': "Brake technique needs work: {summary}",
+                'summary_template': "Focus on brake timing and pressure for better corner entry."
+            },
+            'cornering': {
+                'keywords': ['corner', 'line', 'apex', 'entry', 'exit', 'technique'],
+                'combine_template': "Corner technique improvement: {summary}",
+                'summary_template': "Work on corner entry, apex, and exit technique for better lap times."
+            },
+            'consistency': {
+                'keywords': ['consistency', 'smooth', 'input', 'technique', 'pattern'],
+                'combine_template': "Consistency focus: {summary}",
+                'summary_template': "Focus on smooth, consistent inputs for better lap times."
+            }
+        }
+    
+    def should_combine_messages(self, message1: CoachingMessage, message2: CoachingMessage) -> bool:
+        """Check if two messages should be combined"""
+        if not self.enabled:
+            return False
+            
+        # Must be same category
+        if message1.category != message2.category:
+            return False
+        
+        # Must be within time window
+        time_diff = abs(message1.timestamp - message2.timestamp)
+        if time_diff > self.combination_window:
+            return False
+        
+        # Check for similar content using keyword matching
+        return self._has_similar_keywords(message1.content, message2.content, message1.category)
+    
+    def _has_similar_keywords(self, content1: str, content2: str, category: str) -> bool:
+        """Check if two messages have similar keywords"""
+        if category not in self.combination_patterns:
+            return False
+        
+        keywords = self.combination_patterns[category]['keywords']
+        content1_lower = content1.lower()
+        content2_lower = content2.lower()
+        
+        # Count matching keywords
+        matches1 = sum(1 for keyword in keywords if keyword in content1_lower)
+        matches2 = sum(1 for keyword in keywords if keyword in content2_lower)
+        
+        # If both messages contain similar keywords, they're candidates for combination
+        return matches1 >= self.min_keyword_matches and matches2 >= self.min_keyword_matches
+    
+    def combine_messages(self, messages: List[CoachingMessage]) -> CoachingMessage:
+        """Combine multiple similar messages into one concise message"""
+        if not messages:
+            return None
+        
+        if len(messages) == 1:
+            return messages[0]
+        
+        # Limit the number of messages to combine
+        if len(messages) > self.max_combined_messages:
+            messages = messages[:self.max_combined_messages]
+        
+        # Use the highest priority message as base
+        base_message = max(messages, key=lambda m: m.priority.value)
+        category = base_message.category
+        
+        # Create combined content
+        if category in self.combination_patterns:
+            pattern = self.combination_patterns[category]
+            summary = pattern['summary_template']
+            combined_content = pattern['combine_template'].format(summary=summary)
+        else:
+            # Generic combination
+            combined_content = f"Multiple {category} improvements needed: Focus on technique consistency."
+        
+        # Calculate combined confidence (average)
+        avg_confidence = sum(m.confidence for m in messages) / len(messages)
+        
+        # Use highest priority
+        highest_priority = min(messages, key=lambda m: m.priority.value).priority
+        
+        # Combine audio if any message has it
+        combined_audio = None
+        for message in messages:
+            if message.audio:
+                combined_audio = message.audio
+                break
+        
+        return CoachingMessage(
+            content=combined_content,
+            category=category,
+            priority=highest_priority,
+            source='combined',
+            confidence=avg_confidence,
+            context=f"combined_{category}",
+            timestamp=time.time(),
+            audio=combined_audio
+        )
 
 class MessageFilter:
     """Filters duplicate and redundant messages"""
@@ -106,25 +225,27 @@ class MessageFilter:
         self.recent_messages.append(message)
 
 class CoachingMessageQueue:
-    """Priority queue for coaching messages"""
+    """Priority queue for coaching messages with combination capabilities"""
     
-    def __init__(self):
+    def __init__(self, config: Dict[str, Any] = None):
         self.queue = []
         self.filter = MessageFilter()
+        self.combiner = MessageCombiner(config)
         self.lock = asyncio.Lock()
         self.delivery_stats = {
             'total_added': 0,
             'total_delivered': 0,
             'filtered_duplicates': 0,
-            'delivery_failures': 0
+            'delivery_failures': 0,
+            'messages_combined': 0
         }
         # Global message rate limit (messages per minute)
         self.global_rate_limit = DEFAULT_CONFIG['message_config'].get('global_message_rate_limit', 5)
         self.delivered_timestamps = []  # List of timestamps of delivered messages
-        logger.info("Coaching message queue initialized")
+        logger.info("Coaching message queue initialized with message combination")
     
     async def add_message(self, message: CoachingMessage):
-        """Add a message to the queue"""
+        """Add a message to the queue, checking for combination opportunities"""
         async with self.lock:
             self.delivery_stats['total_added'] += 1
             
@@ -134,10 +255,57 @@ class CoachingMessageQueue:
                 logger.debug(f"Filtered duplicate message: {message.category}")
                 return False
             
+            # Check for combination opportunities with existing messages
+            combined_message = await self._check_for_combination(message)
+            if combined_message:
+                # Replace the original messages with the combined one
+                await self._replace_messages_with_combined(combined_message)
+                self.delivery_stats['messages_combined'] += 1
+                logger.debug(f"Combined {len(combined_message.content.split('|'))} messages into one: {combined_message.content[:50]}...")
+                return True
+            
             # Add to priority queue
             heapq.heappush(self.queue, message)
             logger.debug(f"Added message to queue: {message.category} (priority: {message.priority.name})")
             return True
+    
+    async def _check_for_combination(self, new_message: CoachingMessage) -> Optional[CoachingMessage]:
+        """Check if the new message can be combined with existing messages"""
+        current_time = time.time()
+        candidates = []
+        
+        # Find messages in the queue that could be combined
+        for message in self.queue:
+            if self.combiner.should_combine_messages(new_message, message):
+                candidates.append(message)
+        
+        if candidates:
+            # Add the new message to candidates
+            candidates.append(new_message)
+            return self.combiner.combine_messages(candidates)
+        
+        return None
+    
+    async def _replace_messages_with_combined(self, combined_message: CoachingMessage):
+        """Replace the original messages with the combined message"""
+        # Create a new queue without the messages that were combined
+        new_queue = []
+        for msg in self.queue:
+            # Check if this message should be kept (not combined)
+            should_keep = True
+            for candidate in [combined_message]:  # This is the combined message
+                if self.combiner.should_combine_messages(candidate, msg):
+                    should_keep = False
+                    break
+            
+            if should_keep:
+                new_queue.append(msg)
+        
+        # Replace the queue with the filtered messages
+        self.queue = new_queue
+        
+        # Add the combined message
+        heapq.heappush(self.queue, combined_message)
     
     async def get_next_message(self) -> Optional[CoachingMessage]:
         """Get the next highest priority message, enforcing global rate limit (except for CRITICAL)"""
@@ -237,7 +405,8 @@ class MessageTemplates:
             source=source,
             confidence=0.8,
             context='template',
-            timestamp=time.time()
+            timestamp=time.time(),
+            audio=None  # Template messages don't generate audio
         )
 
 # Example usage and testing

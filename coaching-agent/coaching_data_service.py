@@ -197,7 +197,8 @@ class CoachingDataService:
                         "source": message.source,
                         "context": message.context,
                         "secondary_messages": [],
-                        "improvement_potential": None
+                        "improvement_potential": None,
+                        "audio": message.audio  # Include audio data if present
                     },
                     "timestamp": message.timestamp
                 }
@@ -207,6 +208,10 @@ class CoachingDataService:
                 
                 # Log the coaching message
                 logger.info(f"Coaching: [{message.category}] {message.content}")
+                if message.audio:
+                    logger.info(f"Audio data included: {len(message.audio)} chars")
+                else:
+                    logger.info("No audio data in message")
                 
         except Exception as e:
             logger.error(f"Error checking for coaching messages: {e}")

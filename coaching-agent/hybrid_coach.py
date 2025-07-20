@@ -56,27 +56,37 @@ class DecisionEngine:
         self.ai_usage_count = [t for t in self.ai_usage_count if current_time - t < 3600]
         
         # Check if we're within AI usage limits
-        if len(self.ai_usage_count) / max(1, len(self.ai_usage_count) + 10) > self.ai_usage_threshold:
+        current_usage_rate = len(self.ai_usage_count) / max(1, len(self.ai_usage_count) + 10)
+        if current_usage_rate > self.ai_usage_threshold:
+            logger.debug(f"AI usage rate too high: {current_usage_rate:.2f} > {self.ai_usage_threshold}")
             return False
         
         # Use AI for high-importance, low-confidence insights
         importance = insight.get('importance', 0.5)
         message_importance = importance * insight.get('confidence', 0.5)
+        situation = insight.get('situation', '')
         
-        # AI for complex situations or when local confidence is low
-        if message_importance > 0.7 and local_confidence < 0.6:
+        # More permissive: Use AI for any insight with moderate importance
+        if message_importance > 0.3:  # Lowered from 0.4
+            logger.debug(f"Using AI for moderate importance: {message_importance:.2f} for {situation}")
             return True
         
         # AI for specific event types that benefit from rich context
-        situation = insight.get('situation', '')
         ai_beneficial_situations = [
             'understeer', 'oversteer', 'offtrack', 'bad_exit', 
             'missed_apex', 'sector_analysis', 'race_strategy'
         ]
         
-        if situation in ai_beneficial_situations and message_importance > 0.5:
+        if situation in ai_beneficial_situations:
+            logger.debug(f"Using AI for beneficial situation: {situation} with importance {message_importance:.2f}")
             return True
         
+        # AI for complex situations or when local confidence is low
+        if message_importance > 0.7 and local_confidence < 0.6:
+            logger.debug(f"Using AI for high importance ({message_importance:.2f}) and low confidence ({local_confidence:.2f})")
+            return True
+        
+        logger.debug(f"Not using AI for {situation}: importance={message_importance:.2f}, confidence={local_confidence:.2f}")
         return False
 
 @dataclass
@@ -105,7 +115,7 @@ class HybridCoachingAgent:
         # Initialize components
         self.local_coach = LocalMLCoach(config.get('local_config', {}))
         self.remote_coach = RemoteAICoach(config.get('remote_config', {}))
-        self.message_queue = CoachingMessageQueue()
+        self.message_queue = CoachingMessageQueue(config)
         self.telemetry_analyzer = TelemetryAnalyzer()
         self.session_manager = SessionManager()
         self.decision_engine = DecisionEngine()
@@ -155,6 +165,12 @@ class HybridCoachingAgent:
         """Start the coaching agent"""
         self.is_active = True
         logger.info("Coaching agent started")
+        
+        # Check remote AI coach availability
+        if self.remote_coach.is_available():
+            logger.info("Remote AI coach is available and ready")
+        else:
+            logger.warning("Remote AI coach is not available - check API key configuration")
         
         # Start background tasks (don't await them - they run indefinitely)
         asyncio.create_task(self.message_processor())
@@ -261,7 +277,7 @@ class HybridCoachingAgent:
             logger.debug("No insights to flush.")
             return
         
-        logger.debug(f"Flushing {len(self.llm_insight_buffer)} insights from buffer.")
+        logger.info(f"Flushing {len(self.llm_insight_buffer)} insights from buffer.")
         
         # Group insights by type for better context
         insight_groups = defaultdict(list)
@@ -269,8 +285,11 @@ class HybridCoachingAgent:
             situation = insight.get('situation', 'general')
             insight_groups[situation].append((insight, telemetry_data, current_segment))
         
+        logger.info(f"Grouped insights into {len(insight_groups)} categories: {list(insight_groups.keys())}")
+        
         # Process each group
         for situation, group_insights in insight_groups.items():
+            logger.info(f"Processing {len(group_insights)} insights for situation: {situation}")
             # Use the most recent telemetry data for context
             latest_telemetry = group_insights[-1][1]
             latest_segment = group_insights[-1][2]
@@ -291,7 +310,7 @@ class HybridCoachingAgent:
         
         # Clear the buffer
         self.llm_insight_buffer.clear()
-        logger.debug("LLM insight buffer flushed and cleared.")
+        logger.info("LLM insight buffer flushed and cleared.")
 
     def _determine_event_type(self, situation: str) -> str:
         """Determine event type from situation"""
@@ -322,7 +341,10 @@ class HybridCoachingAgent:
         # Determine if we should use AI
         should_use_ai = self.decision_engine.should_use_ai(insight, confidence)
         
+        logger.info(f"Processing insight: {situation}, confidence={confidence:.2f}, importance={importance:.2f}, should_use_ai={should_use_ai}")
+        
         if should_use_ai and self.remote_coach.is_available():
+            logger.info(f"Using AI for {situation}")
             # Use AI with advice context (rich context and ML analysis included)
             ai_response = await self.remote_coach.generate_coaching(
                 insight, telemetry_data, self.context, 
@@ -332,6 +354,12 @@ class HybridCoachingAgent:
             )
             
             if ai_response:
+                audio_data = ai_response.get('audio')
+                if audio_data:
+                    logger.info(f"AI generated audio: {len(audio_data)} chars")
+                else:
+                    logger.info("No audio generated by AI")
+                    
                 message = CoachingMessage(
                     content=ai_response['message'],
                     category=ai_response.get('category', 'ai_coaching'),
@@ -339,7 +367,8 @@ class HybridCoachingAgent:
                     source='remote_ai',
                     confidence=ai_response.get('confidence', 0.8),
                     context=situation,
-                    timestamp=time.time()
+                    timestamp=time.time(),
+                    audio=audio_data  # Include audio data if present
                 )
                 await self.message_queue.add_message(message)
                 
@@ -349,7 +378,14 @@ class HybridCoachingAgent:
                 # Log rich context usage
                 if ai_response.get('rich_context_used', False):
                     logger.info(f"AI coaching used rich context for {situation}")
+            else:
+                logger.warning(f"AI response was None for {situation}")
         else:
+            if not should_use_ai:
+                logger.info(f"Using local ML for {situation} (AI decision: {should_use_ai})")
+            elif not self.remote_coach.is_available():
+                logger.info(f"Using local ML for {situation} (AI not available)")
+            
             # Use local ML response
             local_response = await self.local_coach.generate_message(insight)
             
@@ -361,9 +397,12 @@ class HybridCoachingAgent:
                     source='local_ml',
                     confidence=confidence,
                     context=situation,
-                    timestamp=time.time()
+                    timestamp=time.time(),
+                    audio=None  # Local ML doesn't generate audio
                 )
                 await self.message_queue.add_message(message)
+            else:
+                logger.warning(f"Local ML response was None for {situation}")
     
     async def message_processor(self):
         """Background task to process and deliver coaching messages"""
@@ -417,7 +456,8 @@ class HybridCoachingAgent:
                     source='segment_analyzer',
                     confidence=0.8,
                     context='segment_feedback',
-                    timestamp=time.time()
+                    timestamp=time.time(),
+                    audio=None  # Segment feedback doesn't generate audio
                 )
                 await self.message_queue.add_message(message)
                 
@@ -543,7 +583,7 @@ class HybridCoachingAgent:
             # Get buffer stats to check if we have enough data
             buffer_stats = self.enhanced_context_builder.get_buffer_stats()
             
-            if buffer_stats['total_samples'] < 10:  # Need at least 10 samples
+            if buffer_stats['buffer_size'] < 10:  # Need at least 10 samples
                 return insights
             
             # Analyze recent time-series data for patterns
@@ -653,34 +693,34 @@ class HybridCoachingAgent:
         return priority_map.get(priority, 0.5)
 
     async def generate_coaching_messages(self, insights: List[Dict[str, Any]], telemetry_data: Dict[str, Any]):
-        """Generate coaching messages from insights using LLM"""
+        """Generate coaching messages from insights using LLM debouncing"""
         if not insights:
+            logger.debug("No insights to process")
             return
         
-        # Group insights by type for better context
-        insight_groups = defaultdict(list)
-        for insight in insights:
-            situation = insight.get('situation', 'general')
-            insight_groups[situation].append(insight)
+        logger.info(f"Processing {len(insights)} insights for LLM buffering")
         
-        for situation, group_insights in insight_groups.items():
-            # Use the current telemetry data for context
-            event_type = self._determine_event_type(situation)
-            
-            # Use rich context builder for advice context
-            advice_context = self.rich_context_builder.build_structured_context(
-                event_type=event_type,
-                telemetry_data=telemetry_data,
-                context=self.context,
-                current_segment=None,  # Will be determined by segment analyzer
-                severity="medium"
-            )
-            
-            # Process each insight in the group
-            for insight in group_insights:
-                await self.process_insight_with_advice_context(
-                    insight, telemetry_data, None, advice_context
-                )
+        # Get current segment information
+        current_segment = self.segment_analyzer.get_current_segment(
+            telemetry_data.get('lap_distance_pct', 0)
+        )
+        
+        # Buffer insights for LLM processing
+        for insight in insights:
+            situation = insight.get('situation', 'unknown')
+            confidence = insight.get('confidence', 0.0)
+            importance = insight.get('importance', 0.5)
+            logger.info(f"Buffering insight: {situation}, confidence={confidence:.2f}, importance={importance:.2f}")
+            self.llm_insight_buffer.append((insight, telemetry_data, current_segment))
+        
+        logger.info(f"Buffered {len(insights)} insights for LLM processing. Buffer size: {len(self.llm_insight_buffer)}")
+        
+        # Start debounce timer if not already running
+        if self.llm_debounce_task is None or self.llm_debounce_task.done():
+            self.llm_debounce_task = asyncio.create_task(self._debounce_and_flush_llm_buffer())
+            logger.info("Started LLM debounce timer")
+        else:
+            logger.debug("LLM debounce timer already running")
     
     def update_performance_metrics(self, telemetry_data: Dict[str, Any], analysis: Dict[str, Any]):
         """Update performance metrics based on telemetry and analysis"""
@@ -876,7 +916,8 @@ class HybridCoachingAgent:
                     source="lap_buffer",
                     confidence=1.0,
                     context="lap_completion",
-                    timestamp=time.time()
+                    timestamp=time.time(),
+                    audio=None  # Lap timing doesn't generate audio
                 )
                 await self.message_queue.add_message(coaching_message)
                 
@@ -914,7 +955,8 @@ class HybridCoachingAgent:
                     source="lap_buffer",
                     confidence=1.0,
                     context="sector_completion",
-                    timestamp=time.time()
+                    timestamp=time.time(),
+                    audio=None  # Sector timing doesn't generate audio
                 )
                 await self.message_queue.add_message(coaching_message)
                 

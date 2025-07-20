@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 export const useCoachingMessages = () => {
   const [coachingMessages, setCoachingMessages] = useState([]);
@@ -8,43 +8,57 @@ export const useCoachingMessages = () => {
   const [isTelemetryConnected, setIsTelemetryConnected] = useState(false); // Add telemetry connection state
   const coachingWs = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const cleanupIntervalRef = useRef(null);
   const MESSAGE_DISPLAY_TIME = 8000; // 8 seconds per message
 
-  // Auto-cleanup expired messages
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCoachingMessages((prev) => {
-        const currentTime = Date.now();
-        const filtered = prev.filter((msg) => {
-          const messageAge = currentTime - msg.timestamp;
-          const isExpired = messageAge >= MESSAGE_DISPLAY_TIME;
+  // Optimized auto-cleanup with useCallback to prevent unnecessary re-renders
+  const cleanupExpiredMessages = useCallback(() => {
+    setCoachingMessages((prev) => {
+      const currentTime = Date.now();
+      const filtered = prev.filter((msg) => {
+        const messageAge = currentTime - msg.timestamp;
+        const isExpired = messageAge >= MESSAGE_DISPLAY_TIME;
 
-          if (isExpired) {
-            console.log(
-              `Message auto-expired and removed: "${msg.message}" (${(
-                messageAge / 1000
-              ).toFixed(1)}s old)`
-            );
-          }
-
-          return !isExpired; // Only keep non-expired messages
-        });
-
-        // Log when messages are removed
-        if (filtered.length !== prev.length) {
+        if (isExpired) {
           console.log(
-            `Auto-removed ${
-              prev.length - filtered.length
-            } expired messages. Remaining: ${filtered.length}`
+            `Message auto-expired and removed: "${msg.message}" (${(
+              messageAge / 1000
+            ).toFixed(1)}s old)`
           );
         }
 
-        return filtered;
+        return !isExpired; // Only keep non-expired messages
       });
-    }, 500); // Check every 500ms for smooth removal
 
-    return () => clearInterval(interval);
-  }, []); // Empty dependency array - this should run independently
+      // Log when messages are removed
+      if (filtered.length !== prev.length) {
+        console.log(
+          `Auto-removed ${
+            prev.length - filtered.length
+          } expired messages. Remaining: ${filtered.length}`
+        );
+      }
+
+      return filtered;
+    });
+  }, []);
+
+  // Auto-cleanup expired messages with optimized interval
+  useEffect(() => {
+    // Clear any existing interval
+    if (cleanupIntervalRef.current) {
+      clearInterval(cleanupIntervalRef.current);
+    }
+
+    cleanupIntervalRef.current = setInterval(cleanupExpiredMessages, 1000); // Check every 1 second
+
+    return () => {
+      if (cleanupIntervalRef.current) {
+        clearInterval(cleanupIntervalRef.current);
+        cleanupIntervalRef.current = null;
+      }
+    };
+  }, [cleanupExpiredMessages]);
 
   useEffect(() => {
     const connectCoachingWebSocket = () => {
@@ -102,6 +116,14 @@ export const useCoachingMessages = () => {
                 improvementPotential: message.data.improvement_potential,
                 audio: message.data.audio || null, // Attach audio if present
               };
+
+              // Test audio functionality with a sample message
+              if (message.data.message && message.data.message.includes("test") && !newMessage.audio) {
+                console.log("Adding test audio to message");
+                // Create a simple test audio (1 second of silence)
+                const testAudio = "UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT";
+                newMessage.audio = testAudio;
+              }
 
               // Update session info if provided
               if (message.data.session_info) {
@@ -218,6 +240,12 @@ export const useCoachingMessages = () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
+      }
+
+      // Clear cleanup interval
+      if (cleanupIntervalRef.current) {
+        clearInterval(cleanupIntervalRef.current);
+        cleanupIntervalRef.current = null;
       }
 
       // Close WebSocket connection

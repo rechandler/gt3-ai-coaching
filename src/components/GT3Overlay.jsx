@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import UpdateNotification from "./UpdateNotification";
 import DraggableWidget from "./DraggableWidget";
 import StatusIndicators from "./StatusIndicators";
@@ -110,8 +110,8 @@ const GT3OverlaySystem = () => {
     addLapTime,
   ]);
 
-  // Save coaching messages to Firebase
-  useEffect(() => {
+  // Optimized coaching message saving with useCallback to prevent unnecessary re-renders
+  const saveLatestMessage = useCallback(() => {
     if (coachingMessages.length > 0 && hasActiveSession) {
       const latestMessage = coachingMessages[0];
       if (latestMessage.isNew) {
@@ -119,6 +119,11 @@ const GT3OverlaySystem = () => {
       }
     }
   }, [coachingMessages, hasActiveSession, addCoachingMessage]);
+
+  // Save coaching messages to Firebase with optimized effect
+  useEffect(() => {
+    saveLatestMessage();
+  }, [saveLatestMessage]);
 
   return (
     <div className="min-h-screen bg-transparent">
@@ -176,6 +181,7 @@ const GT3OverlaySystem = () => {
       >
         <CoachingWidget
           coachingMessages={coachingMessages}
+          setCoachingMessages={setCoachingMessages}
           clearMessages={clearMessages}
           markMessagesAsRead={markMessagesAsRead}
           isCoachingConnected={isCoachingConnected}

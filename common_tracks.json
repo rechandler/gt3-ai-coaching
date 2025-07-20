@@ -258,5 +258,63 @@
       "type": "chicane",
       "description": "Quick left-right chicane before the finish line"
     }
+  ],
+  "Virginia International Raceway": [
+    {
+      "name": "Start/Finish Straight",
+      "start_pct": 0.0,
+      "end_pct": 0.1,
+      "type": "straight",
+      "description": "Main straight leading to turn 1"
+    },
+    {
+      "name": "Horseshoe",
+      "start_pct": 0.1,
+      "end_pct": 0.25,
+      "type": "corner",
+      "description": "Long, banked turn with heavy braking zone"
+    },
+    {
+      "name": "Snake",
+      "start_pct": 0.25,
+      "end_pct": 0.4,
+      "type": "corner",
+      "description": "Series of fast esses section"
+    },
+    {
+      "name": "Oak Tree Turn",
+      "start_pct": 0.4,
+      "end_pct": 0.55,
+      "type": "corner",
+      "description": "Hairpin turn around a prominent oak tree"
+    },
+    {
+      "name": "Back Straight",
+      "start_pct": 0.55,
+      "end_pct": 0.65,
+      "type": "straight",
+      "description": "Long straight with high-speed section"
+    },
+    {
+      "name": "Roller Coaster",
+      "start_pct": 0.65,
+      "end_pct": 0.75,
+      "type": "corner",
+      "description": "Series of blind, fast corners with elevation changes"
+    },
+    {
+      "name": "Hog Pen",
+      "start_pct": 0.75,
+      "end_pct": 0.85,
+      "type": "corner",
+      "description": "Tight hairpin leading onto the back straight"
+    },
+    {
+      "name": "Back Stretch",
+      "start_pct": 0.85,
+      "end_pct": 1.0,
+      "type": "straight",
+      "description": "Final straight before Start/Finish line"
+    }
   ]
 }

@@ -63,6 +63,13 @@ DEFAULT_CONFIG = {
             'performance': 20.0     # was 8.0
         },
         'global_message_rate_limit': 5,  # max messages per minute
+        'message_combination': {
+            'enabled': True,
+            'combination_window': 3.0,  # seconds to look for similar messages
+            'min_keyword_matches': 2,   # minimum keyword matches to consider combination
+            'combine_categories': ['throttle', 'braking', 'cornering', 'consistency'],
+            'max_combined_messages': 5   # maximum number of messages to combine
+        }
     },
     'session_config': {
         'storage_path': 'coaching_sessions',

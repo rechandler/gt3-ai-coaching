@@ -75,8 +75,8 @@ class PatternDetector:
             'line_deviation_threshold': 2.0,  # 2 meters off line
             'consistency_threshold': 0.05,  # 5% lap time variation
             'oversteer_steering_correction': 0.15,  # 15% steering reversal
-            'understeer_high_angle': 0.18,  # 18% steering input (lowered)
-            'understeer_low_yawrate': 0.08, # rad/s, low yaw rate (raised)
+            'understeer_high_angle': 0.25,  # 25% steering input (increased from 0.18)
+            'understeer_low_yawrate': 0.05, # rad/s, low yaw rate (decreased from 0.08)
             'oversteer_high_yawrate': 0.15, # rad/s, high yaw rate
             'oversteer_countersteer': -0.1, # steering opposite to yaw
         }
@@ -137,9 +137,12 @@ class PatternDetector:
         # Robust Understeer: High steering angle, low yaw rate
         understeer_count = 0
         for c in corners:
-            if c['abs_steering'] > self.thresholds['understeer_high_angle'] and abs(c['yawRate']) < self.thresholds['understeer_low_yawrate']:
+            # Only detect understeer in actual cornering situations (not on straights)
+            if (c['abs_steering'] > self.thresholds['understeer_high_angle'] and 
+                abs(c['yawRate']) < self.thresholds['understeer_low_yawrate'] and
+                c['speed'] > 50):  # Only detect at higher speeds
                 understeer_count += 1
-        if understeer_count > 2:
+        if understeer_count > 5:  # Increased from 2 to 5
             logging.debug(f"Understeer detected: count={understeer_count}, threshold={self.thresholds['understeer_high_angle']}, low_yawrate={self.thresholds['understeer_low_yawrate']}")
             patterns.append(DrivingPattern(
                 name="understeer",
@@ -281,6 +284,11 @@ class LocalMLCoach:
         self.coaching_tone = 'balanced'  # 'encouraging', 'critical', 'balanced'
         self.coaching_focus = 'all'  # 'consistency', 'speed', 'technique', 'all'
         
+        # Message deduplication
+        self.recent_messages = {}  # Track recent messages by category
+        self.message_cooldown = 8.0  # Seconds before same message can be sent again
+        self.combined_messages = {}  # Track combined messages by category
+        
         # Load any existing ML models
         self.load_models()
         
@@ -294,6 +302,92 @@ class LocalMLCoach:
             logger.info(f"Model path exists: {model_path}")
         else:
             logger.info("No pre-trained models found, using heuristic analysis")
+    
+    def _should_send_message(self, situation: str, category: str) -> bool:
+        """Check if a message should be sent based on cooldown and deduplication"""
+        current_time = time.time()
+        
+        # Special cooldown for understeer/oversteer messages
+        if situation in ['understeer', 'oversteer']:
+            cooldown = 15.0  # 15 seconds for car balance issues
+        else:
+            cooldown = self.message_cooldown
+        
+        # Check if we have a recent message of this type
+        if category in self.recent_messages:
+            last_time = self.recent_messages[category].get('timestamp', 0)
+            if current_time - last_time < cooldown:
+                logger.debug(f"Skipping {situation} message for {category} - cooldown active ({cooldown}s)")
+                return False
+        
+        logger.debug(f"Allowing {situation} message for {category}")
+        return True
+    
+    def _combine_similar_messages(self, insights: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Combine similar insights into comprehensive messages"""
+        if not insights:
+            return []
+        
+        # Group insights by category
+        grouped_insights = {}
+        for insight in insights:
+            category = self.categorize_situation(insight.get('situation', 'general'))
+            if category not in grouped_insights:
+                grouped_insights[category] = []
+            grouped_insights[category].append(insight)
+        
+        # Combine similar insights
+        combined_insights = []
+        current_time = time.time()
+        
+        for category, category_insights in grouped_insights.items():
+            if len(category_insights) == 1:
+                # Single insight, keep as is
+                combined_insights.append(category_insights[0])
+                logger.debug(f"Single {category} insight: {category_insights[0].get('situation')}")
+            else:
+                # Multiple similar insights, combine them
+                logger.info(f"Combining {len(category_insights)} {category} insights into single message")
+                combined_insight = self._create_combined_insight(category_insights, category)
+                if combined_insight:
+                    combined_insights.append(combined_insight)
+                    
+                    # Track the combined message
+                    self.combined_messages[category] = {
+                        'timestamp': current_time,
+                        'count': len(category_insights),
+                        'insights': category_insights
+                    }
+        
+        return combined_insights
+    
+    def _create_combined_insight(self, insights: List[Dict[str, Any]], category: str) -> Dict[str, Any]:
+        """Create a combined insight from multiple similar insights"""
+        if not insights:
+            return None
+        
+        # Use the highest confidence and importance
+        max_confidence = max(insight.get('confidence', 0) for insight in insights)
+        max_importance = max(insight.get('importance', 0) for insight in insights)
+        
+        # Create comprehensive description
+        descriptions = [insight.get('data', {}).get('description', '') for insight in insights]
+        combined_description = f"Multiple {category} issues detected: " + "; ".join(descriptions)
+        
+        # Create combined insight
+        combined_insight = {
+            'situation': f'combined_{category}',
+            'confidence': max_confidence,
+            'importance': max_importance,
+            'data': {
+                'pattern': f'combined_{category}',
+                'frequency': len(insights),
+                'description': combined_description,
+                'combined_insights': insights
+            }
+        }
+        
+        return combined_insight
     
     async def analyze(self, telemetry_data: Dict[str, Any], 
                      analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -313,8 +407,17 @@ class LocalMLCoach:
         braking_patterns = self.pattern_detector.detect_braking_patterns(recent_data)
         cornering_patterns = self.pattern_detector.detect_cornering_patterns(recent_data)
         
+        logger.debug(f"Detected patterns: {len(braking_patterns)} braking, {len(cornering_patterns)} cornering")
+        
         # Process patterns into insights with reference comparisons
         for pattern in braking_patterns + cornering_patterns:
+            category = self.categorize_situation(pattern.name)
+            
+            # Check if we should send this message
+            if not self._should_send_message(pattern.name, category):
+                logger.debug(f"Skipping {pattern.name} due to cooldown")
+                continue
+            
             insight = {
                 'situation': pattern.name,
                 'confidence': pattern.confidence,
@@ -352,7 +455,16 @@ class LocalMLCoach:
                 insight['data']['driver_issue'] = 'experiencing understeer'
             elif pattern.name == 'oversteer':
                 insight['data']['driver_issue'] = 'experiencing oversteer'
+            
             insights.append(insight)
+            logger.info(f"Generated insight: {pattern.name} (confidence={pattern.confidence:.2f}, severity={pattern.severity:.2f})")
+            
+            # Track this message
+            self.recent_messages[category] = {
+                'timestamp': time.time(),
+                'situation': pattern.name,
+                'confidence': pattern.confidence
+            }
         
         # Analyze sector performance if available
         if 'sector_time' in telemetry_data and 'sector' in telemetry_data:
@@ -375,6 +487,7 @@ class LocalMLCoach:
                     sector_insight['reference_context'] = reference_context
                 
                 insights.append(sector_insight)
+                logger.info(f"Generated sector insight: sector {telemetry_data['sector']}")
         
         # Check for lap completion
         if telemetry_data.get('lap_completed', False):
@@ -399,12 +512,54 @@ class LocalMLCoach:
                         consistency_insight['reference_context'] = reference_context
                     
                     insights.append(consistency_insight)
-        return insights
+                    logger.info(f"Generated consistency insight: {pattern.name}")
+        
+        # Combine similar insights before returning
+        combined_insights = self._combine_similar_messages(insights)
+        
+        logger.info(f"Returning {len(combined_insights)} insights (from {len(insights)} original)")
+        
+        return combined_insights
     
     async def generate_message(self, insight: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Generate a coaching message from an insight"""
-        situation = insight['situation']
-        confidence = insight['confidence']
+        # Handle different insight structures
+        if 'situation' in insight:
+            # Original format
+            situation = insight['situation']
+        elif 'type' in insight and 'category' in insight:
+            # New format from hybrid coach
+            insight_type = insight['type']
+            category = insight['category']
+            
+            # Map insight type and category to situation
+            if insight_type == 'micro_analysis':
+                if 'brake' in category.lower() or 'braking' in category.lower():
+                    situation = 'insufficient_braking'
+                elif 'throttle' in category.lower():
+                    situation = 'early_throttle_in_corners'
+                elif 'consistency' in category.lower():
+                    situation = 'inconsistent_lap_times'
+                elif 'performance' in category.lower():
+                    situation = 'sector_analysis'
+                else:
+                    situation = 'general'
+            elif insight_type == 'enhanced_context':
+                if 'braking_technique' in category:
+                    situation = 'insufficient_braking'
+                elif 'consistency' in category:
+                    situation = 'inconsistent_lap_times'
+                elif 'speed_management' in category:
+                    situation = 'sector_analysis'
+                else:
+                    situation = 'general'
+            else:
+                situation = 'general'
+        else:
+            # Fallback
+            situation = 'general'
+        
+        confidence = insight.get('confidence', 0.5)
         data = insight.get('data', {})
         
         # Generate message based on situation
@@ -426,6 +581,11 @@ class LocalMLCoach:
         # Check for reference context
         reference_context = data.get('reference_context', {})
         has_reference = reference_context.get('reference_available', False)
+        
+        # Handle combined messages
+        if situation.startswith('combined_'):
+            category = situation.replace('combined_', '')
+            return self._create_combined_message(category, data, confidence)
         
         messages = {
             'insufficient_braking': [
@@ -457,6 +617,11 @@ class LocalMLCoach:
                 "Understeer detected: try slowing down more before turn-in.",
                 "You're experiencing understeer. Reduce entry speed or use less steering angle.",
                 "Understeer: focus on getting the car rotated before adding throttle."
+            ],
+            'general': [
+                "Focus on smooth, consistent inputs for better lap times.",
+                "Keep working on your technique - consistency is key.",
+                "Stay focused on the fundamentals of good driving."
             ]
         }
         
@@ -502,13 +667,50 @@ class LocalMLCoach:
         
         return None
     
+    def _create_combined_message(self, category: str, data: Dict[str, Any], confidence: float) -> str:
+        """Create a comprehensive message for combined insights"""
+        combined_insights = data.get('combined_insights', [])
+        frequency = data.get('frequency', 1)
+        
+        if category == 'car_balance':
+            if frequency >= 3:
+                return "Multiple car balance issues detected: Focus on entry speed, steering angle, and throttle timing for better cornering."
+            elif frequency >= 2:
+                return "Car balance needs work: Reduce entry speed and be more patient with throttle application."
+            else:
+                return "Car balance issue: Adjust your entry speed or steering technique."
+        
+        elif category == 'braking':
+            if frequency >= 3:
+                return "Multiple braking issues: Focus on brake timing and pressure for better corner entry."
+            elif frequency >= 2:
+                return "Braking technique needs improvement: Work on timing and pressure."
+            else:
+                return "Braking issue detected: Adjust your brake technique."
+        
+        elif category == 'throttle':
+            if frequency >= 3:
+                return "Multiple throttle issues: Be more patient with throttle application for better corner exits."
+            elif frequency >= 2:
+                return "Throttle timing needs work: Wait longer before applying throttle."
+            else:
+                return "Throttle issue: Adjust your throttle timing."
+        
+        else:
+            # Generic combined message
+            descriptions = [insight.get('data', {}).get('description', '') for insight in combined_insights]
+            return f"Multiple {category} issues: " + "; ".join(descriptions)
+    
     def categorize_situation(self, situation: str) -> str:
         """Categorize a situation for message filtering"""
         category_map = {
             'insufficient_braking': 'braking',
             'early_throttle_in_corners': 'throttle',
             'inconsistent_lap_times': 'consistency',
-            'sector_analysis': 'performance'
+            'sector_analysis': 'performance',
+            'oversteer': 'car_balance',
+            'understeer': 'car_balance',
+            'general': 'general'
         }
         
         return category_map.get(situation, 'general')

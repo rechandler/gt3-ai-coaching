@@ -400,6 +400,57 @@ class LocalMLCoach:
         # Get recent data for pattern analysis
         recent_data = self.telemetry_buffer.get_recent(5.0)
         
+        # --- WARMUP LOGIC START ---
+        lap_number = telemetry_data.get('lap', telemetry_data.get('lap_number', None))
+        if lap_number is None:
+            # Try to infer from context if available
+            lap_number = telemetry_data.get('lap_count', None)
+        if lap_number is not None:
+            try:
+                lap_number = int(lap_number)
+            except Exception:
+                lap_number = None
+        
+        WARMUP_LAPS = 2  # Number of laps to consider as warmup
+        is_warmup = lap_number is not None and lap_number <= WARMUP_LAPS
+        
+        # Only trigger reminder once per session
+        if is_warmup and (not hasattr(self, '_warmup_reminder_sent') or not self._warmup_reminder_sent):
+            insights.append({
+                'situation': 'warmup_reminder',
+                'confidence': 1.0,
+                'importance': 0.7,
+                'data': {
+                    'description': 'First lap(s) - focus on warming up tires and brakes.'
+                }
+            })
+            self._warmup_reminder_sent = True
+        
+        # Aggression detection during warmup
+        if is_warmup:
+            for data in recent_data:
+                throttle = data.get('throttle', data.get('throttle_pct', 0))
+                brake = data.get('brake', data.get('brake_pct', 0))
+                steering = abs(data.get('steering', data.get('steering_angle', 0)))
+                if throttle > 80 or brake > 80 or steering > 0.7:
+                    # Only send one warning per warmup lap
+                    if not hasattr(self, '_warmup_aggression_sent') or not self._warmup_aggression_sent:
+                        insights.append({
+                            'situation': 'warmup_aggression',
+                            'confidence': 0.95,
+                            'importance': 0.8,
+                            'data': {
+                                'description': 'Aggressive input detected during warmup lap. Take it easy to warm up tires and brakes.'
+                            }
+                        })
+                        self._warmup_aggression_sent = True
+                    break
+        else:
+            # Reset for next session
+            self._warmup_reminder_sent = False
+            self._warmup_aggression_sent = False
+        # --- WARMUP LOGIC END ---
+        
         # Get reference context for professional coaching
         reference_context = analysis.get('reference_context', {})
         
@@ -617,6 +668,17 @@ class LocalMLCoach:
                 "Understeer detected: try slowing down more before turn-in.",
                 "You're experiencing understeer. Reduce entry speed or use less steering angle.",
                 "Understeer: focus on getting the car rotated before adding throttle."
+            ],
+            # Warmup messages
+            'warmup_reminder': [
+                "Take it easy on the first lap—tires and brakes need to warm up.",
+                "Gradually build up speed to avoid losing grip on cold tires and brakes.",
+                "First lap: focus on smooth, gentle inputs to warm up the car."
+            ],
+            'warmup_aggression': [
+                "Avoid aggressive throttle, brake, or steering inputs during warmup laps.",
+                "You're pushing hard on a warmup lap—be gentle to bring tires and brakes up to temperature.",
+                "Caution: Aggressive driving detected during warmup. Build up pace gradually."
             ],
             'general': [
                 "Focus on smooth, consistent inputs for better lap times.",

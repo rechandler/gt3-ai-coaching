@@ -289,6 +289,11 @@ class TelemetryAnalyzer:
         self.best_lap_time = float('inf')
         self.best_sector_times = [float('inf')] * 3
         
+        # Gear advisory state
+        self.gear_too_high_start = None
+        self.gear_too_low_start = None
+        self.gear_advisory_active = None
+        
         logger.info("Telemetry Analyzer initialized")
     
     def analyze(self, telemetry_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -299,10 +304,12 @@ class TelemetryAnalyzer:
             'sector': None,
             'corner': None,
             'lap': None,
-            'performance': {}
+            'performance': {},
+            'gear_advisory': None
         }
         
         try:
+            now = time.time()
             # Calculate motion metrics
             if self.previous_telemetry:
                 analysis['motion'] = self.motion_calculator.calculate_g_forces(
@@ -330,7 +337,46 @@ class TelemetryAnalyzer:
             
             # Calculate performance metrics
             analysis['performance'] = self.calculate_performance_metrics(telemetry_data)
-            
+
+            # --- Gear too high/low detection ---
+            rpm = telemetry_data.get('rpm', 0)
+            throttle = telemetry_data.get('throttle_pct', 0)
+            speed = telemetry_data.get('speed', 0)
+            gear = telemetry_data.get('gear', 0)
+            advisory = None
+            threshold_duration = 2.0  # seconds
+            # Too high gear: low RPM, high throttle, moderate speed
+            if rpm > 0 and throttle > 40 and speed > 40 and rpm < 2000 and gear > 1:
+                if self.gear_too_high_start is None:
+                    self.gear_too_high_start = now
+                elif now - self.gear_too_high_start > threshold_duration:
+                    advisory = {
+                        'type': 'gear_too_high',
+                        'message': 'Consider downshifting: RPM is low for current speed and throttle.'
+                    }
+                    self.gear_advisory_active = 'high'
+            else:
+                self.gear_too_high_start = None
+                if self.gear_advisory_active == 'high':
+                    self.gear_advisory_active = None
+            # Too low gear: high RPM, low speed
+            if rpm > 7000 and speed < 60 and gear > 1:
+                if self.gear_too_low_start is None:
+                    self.gear_too_low_start = now
+                elif now - self.gear_too_low_start > threshold_duration:
+                    advisory = {
+                        'type': 'gear_too_low',
+                        'message': 'Consider upshifting: RPM is high for current speed.'
+                    }
+                    self.gear_advisory_active = 'low'
+            else:
+                self.gear_too_low_start = None
+                if self.gear_advisory_active == 'low':
+                    self.gear_advisory_active = None
+            if advisory:
+                analysis['gear_advisory'] = advisory
+            # --- End gear too high/low detection ---
+
             # Update state
             self.previous_telemetry = telemetry_data.copy()
             

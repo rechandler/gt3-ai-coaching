@@ -343,13 +343,14 @@ class TelemetryService:
         try:
             track_name = ""
             track_config = ""
-            
+            category = ""
             # Try to get from session info first
             session_info = self.get_session_info()
             if session_info:
                 weekend_info = session_info.get('WeekendInfo', {})
                 track_name = weekend_info.get('TrackDisplayName', '')
                 track_config = weekend_info.get('TrackConfigName', '')
+                category = weekend_info.get('Category', '')
 
             # Build full track name
             full_track_name = f"{track_name} - {track_config}"
@@ -358,6 +359,7 @@ class TelemetryService:
                 'trackName': track_name,
                 'trackConfig': track_config,
                 'fullTrackName': full_track_name,
+                'category': category,
                 'timestamp': time.time(),
                 'session_active': bool(session_info)
             }
@@ -368,6 +370,7 @@ class TelemetryService:
                 'trackName': "Unknown Track",
                 'trackConfig': "",
                 'fullTrackName': "Unknown Track",
+                'category': "",
                 'timestamp': time.time(),
             }
     

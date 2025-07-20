@@ -52,6 +52,7 @@ class SessionState:
     """Track current session state"""
     track_name: str = "Unknown Track"
     car_name: str = "Unknown Car"
+    category: str = ""
     session_start_time: Optional[float] = None
     last_update_time: Optional[float] = None
     is_active: bool = False
@@ -244,6 +245,9 @@ class CoachingDataService:
         # Check for lap completion
         if 'lapCompleted' in telemetry_data and telemetry_data['lapCompleted']:
             transformed['lap_completed'] = True
+        # Forward SplitTimeInfo if present
+        if 'SplitTimeInfo' in telemetry_data:
+            transformed['SplitTimeInfo'] = telemetry_data['SplitTimeInfo']
         return transformed
     
     def _map_priority_to_number(self, priority):
@@ -359,6 +363,7 @@ class CoachingDataService:
                 # Log session changes
                 track_name = session_data.get('trackName', 'Unknown Track')
                 car_name = session_data.get('carName', 'Unknown Car')
+                category = session_data.get('category', '')
                
         except Exception as e:
             logger.error(f"Error handling session message: {e}")
@@ -438,26 +443,25 @@ class CoachingDataService:
         try:
             track_name = session_data.get('trackName', 'Unknown Track')
             car_name = session_data.get('carName', 'Unknown Car')
-            
+            category = session_data.get('category', '')
             # Check if this is a new session
             session_changed = (
                 track_name != self.session_state.track_name or
-                car_name != self.session_state.car_name
+                car_name != self.session_state.car_name or
+                category != self.session_state.category
             )
-            
             if session_changed:
                 logger.info(f"Session change detected: {self.session_state.track_name} -> {track_name}")
                 self.session_state.session_start_time = time.time()
-            
             # Update state
             self.session_state.track_name = track_name
             self.session_state.car_name = car_name
+            self.session_state.category = category
             self.session_state.last_update_time = time.time()
             self.session_state.is_active = (
                 track_name != "Unknown Track" and 
                 car_name != "Unknown Car"
             )
-            
         except Exception as e:
             logger.error(f"Error updating session state: {e}")
     
@@ -476,6 +480,7 @@ class CoachingDataService:
                 "data": {
                     "track": self.session_state.track_name,
                     "car": self.session_state.car_name,
+                    "category": self.session_state.category,
                     "active": self.session_state.is_active
                 }
             }))

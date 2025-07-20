@@ -316,6 +316,23 @@ class TestConfiguration:
         assert 'ai_usage_frequency' in beginner_config
         assert beginner_config['message_tone'] == 'encouraging'
 
+def test_prompt_builder_includes_category():
+    from remote_ai_coach import PromptBuilder
+    builder = PromptBuilder()
+    # Simulate context with category
+    class Context:
+        track_name = "Spa-Francorchamps"
+        car_name = "BMW M4 GT3"
+        category = "SportsCar"
+        session_type = "Practice"
+        coaching_mode = "Intermediate"
+    context = Context()
+    insight = {'situation': 'inconsistent_lap_times', 'confidence': 0.8, 'importance': 0.6, 'data': {}}
+    telemetry_data = {}
+    prompt = builder.build_prompt(insight, telemetry_data, context)
+    assert "Category: SportsCar" in prompt
+    assert "You are an expert SportsCar racing coach" in prompt
+
 # Integration test
 class TestIntegration:
     """Integration tests"""

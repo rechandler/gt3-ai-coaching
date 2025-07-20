@@ -75,86 +75,77 @@ class EnhancedIRacingTelemetryServer extends EventEmitter {
                 const playerDriver = sessionInfo.DriverInfo.Drivers.find(driver => 
                     driver.CarIdx === sessionInfo.DriverInfo.DriverCarIdx
                 );
-                
                 if (playerDriver) {
                     this.currentCar = {
                         name: playerDriver.CarScreenName,
                         path: playerDriver.CarPath,
                         id: playerDriver.CarID
                     };
-                    console.log(`[GT3 Telemetry] Current car: ${this.currentCar.name}`);
+                    console.log(`[Telemetry] Current car: ${this.currentCar.name}`);
                 }
             }
-            
-            // Extract track information
+            // Extract track and category information
             if (sessionInfo.WeekendInfo) {
                 this.currentTrack = {
                     name: sessionInfo.WeekendInfo.TrackDisplayName,
                     config: sessionInfo.WeekendInfo.TrackConfigName,
                     id: sessionInfo.WeekendInfo.TrackID,
-                    length: sessionInfo.WeekendInfo.TrackLength
+                    length: sessionInfo.WeekendInfo.TrackLength,
+                    category: sessionInfo.WeekendInfo.Category || 'Unknown'
                 };
-                console.log(`[GT3 Telemetry] Current track: ${this.currentTrack.name} (${this.currentTrack.config})`);
+                console.log(`[Telemetry] Current track: ${this.currentTrack.name} (${this.currentTrack.config}), Category: ${this.currentTrack.category}`);
             }
-            
-            // GT3 specific session processing
-            this.processGT3SessionInfo(sessionInfo);
-            
+            // Category-specific session processing
+            this.processCategorySessionInfo(sessionInfo);
         } catch (error) {
-            console.error('[GT3 Telemetry] Error processing session info:', error);
+            console.error('[Telemetry] Error processing session info:', error);
         }
     }
-    
-    processGT3SessionInfo(sessionInfo) {
-        // GT3 specific car validation
-        if (this.currentCar) {
-            const gt3Cars = [
-                'Acura NSX GT3 EVO 22',
-                'Audi R8 LMS GT3 EVO 2',
-                'BMW M4 GT3',
-                'Chevrolet Corvette Z06 GT3.R',
-                'Ferrari 296 GT3',
-                'Ford Mustang GT3',
-                'Lamborghini Huracán GT3',
-                'McLaren 720S GT3 EVO',
-                'Mercedes-AMG GT3 2020',
-                'Porsche 992 GT3 R'
-            ];
-            
-            const isGT3Car = gt3Cars.some(gt3Car => 
-                this.currentCar.name.includes(gt3Car) || gt3Car.includes(this.currentCar.name)
-            );
-            
-            if (isGT3Car) {
-                console.log(`[GT3 Telemetry] ✅ GT3 car detected: ${this.currentCar.name}`);
-                this.emit('GT3CarDetected', this.currentCar);
-            } else {
-                console.log(`[GT3 Telemetry] ⚠️  Non-GT3 car: ${this.currentCar.name}`);
-                this.emit('NonGT3Car', this.currentCar);
-            }
+    processCategorySessionInfo(sessionInfo) {
+        // Category-specific car validation (example: can be extended for other categories)
+        if (this.currentCar && this.currentTrack && this.currentTrack.category) {
+            // Example: emit event for detected car/category
+            this.emit(`${this.currentTrack.category}CarDetected`, this.currentCar);
         }
     }
-    
     processTelemetry(telemetry) {
         try {
-            // No more PaceFlags converter errors!
             if (telemetry.PaceFlags !== undefined) {
                 this.processPaceFlags(telemetry.PaceFlags);
             }
-            
-            // Process lap times
             if (telemetry.LapCurrentLapTime !== undefined) {
                 this.processLapTimes(telemetry);
             }
-            
-            // Process GT3 specific telemetry
-            this.processGT3Telemetry(telemetry);
-            
+            // Category-specific telemetry processing
+            this.processCategoryTelemetry(telemetry);
         } catch (error) {
-            console.error('[GT3 Telemetry] Error processing telemetry:', error);
+            console.error('[Telemetry] Error processing telemetry:', error);
         }
     }
-    
+    processCategoryTelemetry(telemetry) {
+        // Category-specific telemetry processing (type-agnostic)
+        // Example: tire/brake/fuel/performance analysis can be made generic or extended per category
+        if (telemetry.TireTemps) {
+            this.analyzeTireTemperatures(telemetry.TireTemps);
+        }
+        if (telemetry.BrakePressures) {
+            this.analyzeBrakeTemperatures(telemetry.BrakePressures);
+        }
+        if (telemetry.FuelLevel !== undefined && telemetry.FuelUsePerHour !== undefined) {
+            this.analyzeFuelStrategy(telemetry);
+        }
+        if (telemetry.Speed !== undefined && telemetry.RPM !== undefined) {
+            this.analyzePerformance(telemetry);
+        }
+        // Emit processed category data
+        const category = this.currentTrack?.category || 'Unknown';
+        this.emit(`${category}Telemetry`, {
+            car: this.currentCar,
+            track: this.currentTrack,
+            telemetry: telemetry,
+            analysis: this.getCategoryAnalysis(telemetry)
+        });
+    }
     processPaceFlags(paceFlags) {
         // Handle pace flags - no converter issues with Python backend!
         if (paceFlags & 0x00000001) { // EndOfLine
@@ -197,38 +188,6 @@ class EnhancedIRacingTelemetryServer extends EventEmitter {
                 this.emit('BestLap', this.bestLapTime);
             }
         }
-    }
-    
-    processGT3Telemetry(telemetry) {
-        // GT3 specific telemetry processing
-        
-        // Tire temperature analysis
-        if (telemetry.TireTemps) {
-            this.analyzeTireTemperatures(telemetry.TireTemps);
-        }
-        
-        // Brake temperature monitoring
-        if (telemetry.BrakePressures) {
-            this.analyzeBrakeTemperatures(telemetry.BrakePressures);
-        }
-        
-        // Fuel strategy
-        if (telemetry.FuelLevel !== undefined && telemetry.FuelUsePerHour !== undefined) {
-            this.analyzeFuelStrategy(telemetry);
-        }
-        
-        // Performance analysis
-        if (telemetry.Speed !== undefined && telemetry.RPM !== undefined) {
-            this.analyzePerformance(telemetry);
-        }
-        
-        // Emit processed GT3 data
-        this.emit('GT3Telemetry', {
-            car: this.currentCar,
-            track: this.currentTrack,
-            telemetry: telemetry,
-            analysis: this.getGT3Analysis(telemetry)
-        });
     }
     
     analyzeTireTemperatures(tireTemps) {
@@ -332,8 +291,8 @@ class EnhancedIRacingTelemetryServer extends EventEmitter {
         this.emit('PerformanceData', performance);
     }
     
-    getGT3Analysis(telemetry) {
-        // Comprehensive GT3 analysis
+    getCategoryAnalysis(telemetry) {
+        // Generic analysis (can be extended per category)
         return {
             timestamp: Date.now(),
             car: this.currentCar?.name,
@@ -347,7 +306,7 @@ class EnhancedIRacingTelemetryServer extends EventEmitter {
             brakes: telemetry.BrakePressures,
             flags: {
                 session: telemetry.SessionFlags,
-                pace: telemetry.PaceFlags // No conversion errors!
+                pace: telemetry.PaceFlags
             }
         };
     }

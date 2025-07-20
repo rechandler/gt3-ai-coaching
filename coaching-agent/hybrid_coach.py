@@ -233,6 +233,16 @@ class HybridCoachingAgent:
             # Process through segment analyzer
             self.segment_analyzer.buffer_telemetry(telemetry_data)
             
+            # Update sector boundaries from SplitTimeInfo if present
+            split_time_info = telemetry_data.get('SplitTimeInfo')
+            if split_time_info and 'Sectors' in split_time_info:
+                # Extract sector start percentages and ensure sorted order
+                sector_boundaries = [s['SectorStartPct'] for s in sorted(split_time_info['Sectors'], key=lambda x: x['SectorNum'])]
+                # Ensure 1.0 is the final boundary if not already present
+                if sector_boundaries[-1] < 1.0:
+                    sector_boundaries.append(1.0)
+                self.telemetry_analyzer.sector_analyzer.update_sector_boundaries(sector_boundaries)
+
             # Process through telemetry analyzer
             analysis = self.telemetry_analyzer.analyze(telemetry_data)
             

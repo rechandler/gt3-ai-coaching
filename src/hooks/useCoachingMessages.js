@@ -131,7 +131,7 @@ export const useCoachingMessages = () => {
                   "Received session info:",
                   message.data.session_info
                 );
-                setSessionInfo(message.data.session_info);
+                setSessionInfo({ ...message.data.session_info, category: message.data.session_info?.category || message.data.session_info?.Category || '' });
               }
 
               setCoachingMessages((prev) => {
@@ -151,11 +151,11 @@ export const useCoachingMessages = () => {
             } else if (message.type === "sessionInfo" && message.data) {
               // Handle session info messages from coaching data service
               console.log("Received session info:", message.data);
-              setSessionInfo(message.data);
+              setSessionInfo({ ...message.data, category: message.data?.category || message.data?.Category || '' });
             } else if (message.type === "session_info" && message.data.session_info) {
               // Handle session-info-only messages
               console.log("Received session info update:", message.data.session_info);
-              setSessionInfo(message.data.session_info);
+              setSessionInfo({ ...message.data.session_info, category: message.data.session_info?.category || message.data.session_info?.Category || '' });
             } else if (message.type === "history" && message.messages) {
               console.log(
                 "Received coaching message history:",

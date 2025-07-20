@@ -55,7 +55,7 @@ class PromptBuilder:
     """Builds prompts for the AI based on context and situation, using detailed segment data and rich context."""
     
     def __init__(self):
-        self.base_prompt = """You are an expert GT3 racing coach providing real-time, segment-specific coaching advice.\nYou have access to detailed telemetry and track segment data.\n\nKey principles:\n- Be concise and clear (1-2 sentences max)\n- Focus on the most important improvement\n- Use racing terminology appropriately\n- Be encouraging but direct\n- Provide specific numeric feedback when relevant\n\nCurrent session context:\nTrack: {track_name}\nCar: {car_name}\nSession Type: {session_type}\nCoaching Mode: {coaching_mode}\n"""
+        self.base_prompt = """You are an expert {category} racing coach providing real-time, segment-specific coaching advice.\nYou have access to detailed telemetry and track segment data.\n\nKey principles:\n- Be concise and clear (1-2 sentences max)\n- Focus on the most important improvement\n- Use racing terminology appropriately\n- Be encouraging but direct\n- Provide specific numeric feedback when relevant\n\nCurrent session context:\nTrack: {track_name}\nCar: {car_name}\nCategory: {category}\nSession Type: {session_type}\nCoaching Mode: {coaching_mode}\n"""
         
         # Initialize rich context builder
         self.rich_context_builder = RichContextBuilder()
@@ -100,6 +100,7 @@ class PromptBuilder:
         prompt = self.base_prompt.format(
             track_name=getattr(context, 'track_name', 'Unknown'),
             car_name=getattr(context, 'car_name', 'Unknown'),
+            category=getattr(context, 'category', 'Unknown'),
             session_type=getattr(context, 'session_type', 'Practice'),
             coaching_mode=getattr(context, 'coaching_mode', 'Intermediate')
         )

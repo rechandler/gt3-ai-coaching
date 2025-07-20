@@ -73,7 +73,7 @@ class CoachingDataService:
         telemetry_port: int = 9001,
         session_port: int = 9002,
         ui_host: str = "localhost", 
-        ui_port: int = 8082
+        ui_port: int = 8083
     ):
         self.telemetry_host = telemetry_host
         self.telemetry_port = telemetry_port

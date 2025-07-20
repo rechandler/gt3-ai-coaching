@@ -1,0 +1,37 @@
+{
+  "personal_best": {
+    "lap_data": {
+      "lap_number": 1,
+      "lap_time": 1.556260347366333,
+      "sector_times": [
+        0.4948689937591553,
+        0.5182902812957764,
+        0.527705192565918
+      ],
+      "track_name": "Monza",
+      "car_name": "Ferrari 488 GT3",
+      "timestamp": 1752970232.8010268,
+      "is_valid": true,
+      "metadata": {
+        "sector_boundaries": [
+          0.0,
+          0.33,
+          0.66,
+          1.0
+        ],
+        "telemetry_count": 97
+      }
+    },
+    "created_at": 1752970232.8012605,
+    "metadata": {
+      "track_name": "Monza",
+      "car_name": "Ferrari 488 GT3",
+      "sector_boundaries": [
+        0.0,
+        0.33,
+        0.66,
+        1.0
+      ]
+    }
+  }
+}

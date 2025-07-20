@@ -101,9 +101,9 @@ class ReferenceDataManager:
                     for corner_data in data.get('corners', []):
                         ref = CornerReference(**corner_data)
                         self.corner_references[ref.corner_id] = ref
-                logger.info(f"📊 Loaded {len(self.corner_references)} corner references")
+                logger.info(f"Loaded {len(self.corner_references)} corner references")
             else:
-                logger.info("📊 No reference file found, will create from analysis")
+                logger.info("No reference file found, will create from analysis")
         except Exception as e:
             logger.error(f"❌ Failed to load corner references: {e}")
     
@@ -139,7 +139,7 @@ class ReferenceDataManager:
             }
             with open(self.reference_file, 'w') as f:
                 json.dump(data, f, indent=2)
-            logger.info(f"💾 Saved {len(self.corner_references)} corner references")
+            logger.info(f"Saved {len(self.corner_references)} corner references")
         except Exception as e:
             logger.error(f"❌ Failed to save corner references: {e}")
     
@@ -297,7 +297,7 @@ class MicroAnalyzer:
         self.corner_start_position = None
         self.analysis_history = []
         
-        logger.info("🔍 Micro Analyzer initialized")
+        logger.info("Micro Analyzer initialized")
     
     def start_corner_analysis(self, telemetry: Dict[str, Any], corner_id: str = None) -> bool:
         """Start analyzing a new corner"""

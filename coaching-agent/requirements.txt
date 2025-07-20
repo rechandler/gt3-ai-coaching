@@ -4,6 +4,9 @@ websockets
 numpy
 dataclasses
 
+# Data validation and serialization
+pydantic>=2.0.0
+
 # Firebase (optional)
 firebase-admin
 

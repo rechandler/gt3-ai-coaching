@@ -26,45 +26,11 @@ from dataclasses import dataclass, field
 from collections import defaultdict, deque
 from pathlib import Path
 import numpy as np
+from schemas import TelemetryData, LapData, SectorData, ReferenceLap, ReferenceType
 
 logger = logging.getLogger(__name__)
 
-@dataclass
-class LapData:
-    """Complete lap telemetry data"""
-    lap_number: int
-    lap_time: float
-    sector_times: List[float]
-    telemetry_points: List[Dict[str, Any]]
-    track_name: str
-    car_name: str
-    timestamp: float
-    is_valid: bool = True
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-@dataclass
-class SectorData:
-    """Sector telemetry and timing data"""
-    sector_number: int
-    sector_time: float
-    telemetry_points: List[Dict[str, Any]]
-    entry_speed: float
-    exit_speed: float
-    min_speed: float
-    max_speed: float
-    avg_throttle: float
-    avg_brake: float
-    max_steering: float
-    start_pct: float
-    end_pct: float
-
-@dataclass
-class ReferenceLap:
-    """Reference lap for comparison"""
-    lap_data: LapData
-    reference_type: str  # 'personal_best', 'session_best', 'engineer', 'optimal'
-    created_at: float
-    metadata: Dict[str, Any] = field(default_factory=dict)
+# Use schemas from schemas.py instead of dataclasses
 
 class LapBufferManager:
     """Manages real-time lap and sector buffering with reference tracking"""
@@ -120,9 +86,12 @@ class LapBufferManager:
     def buffer_telemetry(self, telemetry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Buffer telemetry data and detect lap/sector changes"""
         try:
+            # Validate telemetry data
+            telemetry_data = TelemetryData(**telemetry)
+            
             # Extract key telemetry fields
-            lap_number = telemetry.get('lap')
-            lap_dist_pct = telemetry.get('lapDistPct', 0.0)
+            lap_number = telemetry_data.lap
+            lap_dist_pct = telemetry_data.lapDistPct or 0.0
             current_time = time.time()
             
             # Check for new lap
@@ -151,11 +120,11 @@ class LapBufferManager:
                 return sector_change
             
             # Buffer current telemetry
-            self.current_lap_buffer.append(telemetry.copy())
+            self.current_lap_buffer.append(telemetry_data.dict())
             
             # Buffer to current sector
             if self.current_sector < len(self.sector_boundaries) - 1:
-                self.current_sector_buffers[self.current_sector].append(telemetry.copy())
+                self.current_sector_buffers[self.current_sector].append(telemetry_data.dict())
             
             return None
             
@@ -226,8 +195,11 @@ class LapBufferManager:
             return None
         
         try:
+            # Validate final telemetry
+            final_telemetry_data = TelemetryData(**final_telemetry)
+            
             # Calculate lap time
-            lap_time = final_telemetry.get('lapLastLapTime', 0)
+            lap_time = final_telemetry_data.lapLastLapTime or 0
             if lap_time <= 0:
                 # Estimate lap time from telemetry
                 lap_time = time.time() - self.current_lap_start_time
@@ -241,15 +213,19 @@ class LapBufferManager:
             while len(self.sector_times) < 3:
                 self.sector_times.append(0.0)
             
+            # Convert telemetry points to TelemetryData objects
+            telemetry_points = [TelemetryData(**point) for point in self.current_lap_buffer]
+            
             # Create lap data
             lap_data = LapData(
                 lap_number=self.current_lap_number or 0,
                 lap_time=lap_time,
                 sector_times=self.sector_times[:3],
-                telemetry_points=self.current_lap_buffer.copy(),
+                telemetry_points=telemetry_points,
                 track_name=self.current_track,
                 car_name=self.current_car,
                 timestamp=time.time(),
+                is_valid=True,
                 metadata={
                     'sector_boundaries': self.sector_boundaries,
                     'telemetry_count': len(self.current_lap_buffer)
@@ -282,16 +258,19 @@ class LapBufferManager:
                 end_pct=self.sector_boundaries[sector_number + 1]
             )
         
+        # Convert telemetry points to TelemetryData objects
+        telemetry_data_points = [TelemetryData(**point) for point in telemetry_points]
+        
         # Calculate sector metrics
-        speeds = [t.get('speed', 0) for t in telemetry_points]
-        throttles = [t.get('throttle', 0) for t in telemetry_points]
-        brakes = [t.get('brake', 0) for t in telemetry_points]
-        steerings = [abs(t.get('steering', 0)) for t in telemetry_points]
+        speeds = [t.speed or 0 for t in telemetry_data_points]
+        throttles = [t.throttle or 0 for t in telemetry_data_points]
+        brakes = [t.brake or 0 for t in telemetry_data_points]
+        steerings = [abs(t.steering or 0) for t in telemetry_data_points]
         
         return SectorData(
             sector_number=sector_number,
             sector_time=sector_time,
-            telemetry_points=telemetry_points,
+            telemetry_points=telemetry_data_points,
             entry_speed=speeds[0] if speeds else 0.0,
             exit_speed=speeds[-1] if speeds else 0.0,
             min_speed=min(speeds) if speeds else 0.0,
@@ -411,7 +390,7 @@ class LapBufferManager:
         try:
             reference_lap = ReferenceLap(
                 lap_data=lap_data,
-                reference_type=reference_type,
+                reference_type=ReferenceType(reference_type),
                 created_at=time.time(),
                 metadata={
                     'track_name': lap_data.track_name,

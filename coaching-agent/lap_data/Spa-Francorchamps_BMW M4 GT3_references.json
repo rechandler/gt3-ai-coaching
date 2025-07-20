@@ -1,0 +1,142 @@
+{
+  "personal_best": {
+    "lap_data": {
+      "lap_number": 1,
+      "lap_time": 1.5654094219207764,
+      "sector_times": [
+        0.5042872428894043,
+        0.5162832736968994,
+        0.5290305614471436
+      ],
+      "track_name": "Spa-Francorchamps",
+      "car_name": "BMW M4 GT3",
+      "timestamp": 1752970217.1176798,
+      "is_valid": true,
+      "metadata": {
+        "sector_boundaries": [
+          0.0,
+          0.33,
+          0.66,
+          1.0
+        ],
+        "telemetry_count": 97
+      }
+    },
+    "created_at": 1752970217.1178715,
+    "metadata": {
+      "track_name": "Spa-Francorchamps",
+      "car_name": "BMW M4 GT3",
+      "sector_boundaries": [
+        0.0,
+        0.33,
+        0.66,
+        1.0
+      ]
+    }
+  },
+  "optimal": {
+    "lap_data": {
+      "lap_number": 1,
+      "lap_time": 1.5654094219207764,
+      "sector_times": [
+        0.5042872428894043,
+        0.5162832736968994,
+        0.5290305614471436
+      ],
+      "track_name": "Spa-Francorchamps",
+      "car_name": "BMW M4 GT3",
+      "timestamp": 1752970217.1176798,
+      "is_valid": true,
+      "metadata": {
+        "sector_boundaries": [
+          0.0,
+          0.33,
+          0.66,
+          1.0
+        ],
+        "telemetry_count": 97
+      }
+    },
+    "created_at": 1752970217.1185992,
+    "metadata": {
+      "track_name": "Spa-Francorchamps",
+      "car_name": "BMW M4 GT3",
+      "sector_boundaries": [
+        0.0,
+        0.33,
+        0.66,
+        1.0
+      ]
+    }
+  },
+  "race_pace": {
+    "lap_data": {
+      "lap_number": 1,
+      "lap_time": 1.596329689025879,
+      "sector_times": [
+        0.5042872428894043,
+        0.5162832736968994,
+        0.5290305614471436
+      ],
+      "track_name": "Spa-Francorchamps",
+      "car_name": "BMW M4 GT3",
+      "timestamp": 1752970217.1485975,
+      "is_valid": true,
+      "metadata": {
+        "sector_boundaries": [
+          0.0,
+          0.33,
+          0.66,
+          1.0
+        ],
+        "telemetry_count": 97
+      }
+    },
+    "created_at": 1752970217.1487732,
+    "metadata": {
+      "track_name": "Spa-Francorchamps",
+      "car_name": "BMW M4 GT3",
+      "sector_boundaries": [
+        0.0,
+        0.33,
+        0.66,
+        1.0
+      ]
+    }
+  },
+  "consistency": {
+    "lap_data": {
+      "lap_number": 1,
+      "lap_time": 15.611923217773438,
+      "sector_times": [
+        0.5042872428894043,
+        0.5162832736968994,
+        0.5290305614471436
+      ],
+      "track_name": "Spa-Francorchamps",
+      "car_name": "BMW M4 GT3",
+      "timestamp": 1752970231.1641939,
+      "is_valid": true,
+      "metadata": {
+        "sector_boundaries": [
+          0.0,
+          0.33,
+          0.66,
+          1.0
+        ],
+        "telemetry_count": 97
+      }
+    },
+    "created_at": 1752970231.1643488,
+    "metadata": {
+      "track_name": "Spa-Francorchamps",
+      "car_name": "BMW M4 GT3",
+      "sector_boundaries": [
+        0.0,
+        0.33,
+        0.66,
+        1.0
+      ]
+    }
+  }
+}

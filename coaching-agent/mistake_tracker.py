@@ -183,7 +183,7 @@ class MistakeTracker:
             'low': {'frequency': 1, 'avg_time_loss': 0.05}
         }
         
-        logger.info(f"🔍 Mistake Tracker initialized for session: {self.session_id}")
+        logger.info(f"Mistake Tracker initialized for session: {self.session_id}")
     
     def add_mistake(self, analysis_data: Dict[str, Any], corner_id: str = "unknown", 
                    corner_name: str = "Unknown Corner") -> Optional[MistakeEvent]:

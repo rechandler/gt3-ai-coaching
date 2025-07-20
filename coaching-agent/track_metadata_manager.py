@@ -50,9 +50,9 @@ class TrackMetadataManager:
                 logger.warning(f"❌ Firebase initialization failed: {e}")
         else:
             if not FIREBASE_AVAILABLE:
-                logger.info("⚠️ Firebase not available, using local-only mode")
+                                                logger.info("Firebase not available, using local-only mode")
             else:
-                logger.info("⚠️ No Firebase config provided, using local-only mode")
+                                                logger.info("No Firebase config provided, using local-only mode")
         
         # Load local tracks
         self.load_local_tracks()
@@ -63,12 +63,12 @@ class TrackMetadataManager:
             if os.path.exists(self.local_file_path):
                 with open(self.local_file_path, 'r') as f:
                     self.local_tracks = json.load(f)
-                logger.info(f"📁 Loaded {len(self.local_tracks)} tracks from local cache")
+                logger.info(f"Loaded {len(self.local_tracks)} tracks from local cache")
             else:
                 # Initialize with some common tracks
                 self.local_tracks = self.get_default_tracks()
                 self.save_local_tracks()
-                logger.info("📁 Created default local track cache")
+                logger.info("Created default local track cache")
         except Exception as e:
             logger.error(f"❌ Failed to load local tracks: {e}")
             self.local_tracks = self.get_default_tracks()

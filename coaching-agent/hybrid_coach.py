@@ -190,6 +190,11 @@ class HybridCoachingAgent:
             return
         
         try:
+            # Debug: Log available telemetry fields (first time only)
+            if not hasattr(self, '_logged_telemetry_fields'):
+                logger.info(f"Available telemetry fields: {list(telemetry_data.keys())}")
+                self._logged_telemetry_fields = True
+            
             # Validate telemetry data using schema validator
             validation_result = self.schema_validator.validate_telemetry(telemetry_data)
             if not validation_result.is_valid:
@@ -219,6 +224,7 @@ class HybridCoachingAgent:
             # Buffer telemetry for lap/sector analysis
             lap_event = self.lap_buffer_manager.buffer_telemetry(telemetry_data)
             if lap_event:
+                logger.info(f"Lap event detected: {lap_event.get('type')}")
                 await self.handle_lap_event(lap_event, telemetry_data)
             
             # Process through micro-analyzer for corner-specific feedback
@@ -239,11 +245,13 @@ class HybridCoachingAgent:
             # Add micro-analysis insights if available
             micro_insights = self.get_micro_analysis_insights()
             if micro_insights:
+                logger.info(f"Adding {len(micro_insights)} micro-analysis insights")
                 all_insights.extend(micro_insights)
             
             # Add enhanced context insights if available
             enhanced_insights = self.get_enhanced_context_insights(telemetry_data)
             if enhanced_insights:
+                logger.info(f"Adding {len(enhanced_insights)} enhanced context insights")
                 all_insights.extend(enhanced_insights)
             
             # Track mistakes for persistent analysis
@@ -519,27 +527,38 @@ class HybridCoachingAgent:
             self.context.best_lap_time = telemetry_data['best_lap_time']
     
     async def update_track_metadata(self, track_name: str):
-        """Ensure metadata is loaded for the current track"""
-        await self.track_metadata_manager.ensure_metadata_for_track(track_name, self.context)
-        segments = await self.track_metadata_manager.get_track_metadata(track_name)
-        if segments:
-            self.segment_analyzer.update_track(track_name, segments)
+        """Update track metadata for segment analysis"""
+        try:
+            logger.info(f"Updating track metadata for: {track_name}")
+            segments = await self.track_metadata_manager.get_track_segments(track_name, self.context)
+            if segments:
+                self.segment_analyzer.update_track(track_name, segments)
+                logger.info(f"Loaded {len(segments)} segments for {track_name}")
+            else:
+                logger.warning(f"No segments found for track: {track_name}")
+        except Exception as e:
+            logger.error(f"Error updating track metadata: {e}")
     
     def process_micro_analysis(self, telemetry_data: Dict[str, Any]):
         """Process telemetry through micro-analyzer"""
         try:
             # Get current segment for corner identification
-            lap_dist_pct = telemetry_data.get('lapDistPct', 0) # Changed from 'lap_distance_pct' to 'lapDistPct'
+            lap_dist_pct = telemetry_data.get('lapDistPct', telemetry_data.get('lap_distance_pct', 0))
             current_segment = self.segment_analyzer.get_current_segment(lap_dist_pct)
+            
+            logger.debug(f"Lap distance: {lap_dist_pct:.3f}, Current segment: {current_segment}")
             
             if current_segment and current_segment['type'] == 'corner':
                 corner_id = f"{self.current_track_name}_{current_segment['name']}".replace(' ', '_').lower()
+                logger.info(f"Processing corner: {current_segment['name']} (ID: {corner_id})")
                 
                 # Start or continue corner analysis
                 if not self.micro_analyzer.current_corner_id:
                     self.micro_analyzer.start_corner_analysis(telemetry_data, corner_id)
+                    logger.info(f"Started corner analysis for {corner_id}")
                 else:
                     self.micro_analyzer.continue_corner_analysis(telemetry_data)
+                    logger.debug(f"Continued corner analysis for {self.micro_analyzer.current_corner_id}")
             
         except Exception as e:
             logger.error(f"Error in micro-analysis: {e}")
@@ -551,6 +570,7 @@ class HybridCoachingAgent:
         # Check if we have recent analysis
         if self.micro_analyzer.analysis_history:
             latest_analysis = self.micro_analyzer.analysis_history[-1]
+            logger.debug(f"Latest micro-analysis: {latest_analysis.corner_name}, feedback count: {len(latest_analysis.specific_feedback)}")
             
             # Create insights from micro-analysis
             if latest_analysis.specific_feedback:
@@ -572,6 +592,7 @@ class HybridCoachingAgent:
                     }
                 }
                 insights.append(insight)
+                logger.info(f"Generated micro-analysis insight for {latest_analysis.corner_name}")
         
         return insights
     

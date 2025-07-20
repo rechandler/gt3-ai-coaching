@@ -27,6 +27,9 @@ from reference_manager import ReferenceManager
 from micro_analysis import MicroAnalyzer, ReferenceDataManager
 from mistake_tracker import MistakeTracker, SessionSummary
 from lap_buffer_manager import LapBufferManager
+from enhanced_context_builder import EnhancedContextBuilder
+from schema_validator import SchemaValidator, ValidationResult
+from reference_lap_helper import ReferenceLapHelper, create_reference_lap_helper
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +130,15 @@ class HybridCoachingAgent:
         # Lap buffer manager for accurate lap/sector tracking
         self.lap_buffer_manager = LapBufferManager()
         
+        # Enhanced context builder for time-series analysis
+        self.enhanced_context_builder = EnhancedContextBuilder(config.get('enhanced_context', {}))
+        
+        # Schema validator for data validation
+        self.schema_validator = SchemaValidator()
+        
+        # Reference lap helper for lap comparisons
+        self.reference_lap_helper = None  # Will be initialized when track info is available
+        
         self.current_track_name = None
         self.current_segment = None
         
@@ -137,19 +149,17 @@ class HybridCoachingAgent:
         self.llm_insight_buffer = []
         self.llm_debounce_task = None
         
-        logger.info("Hybrid Coaching Agent initialized")
+        logger.info("Hybrid Coaching Agent initialized with enhanced systems")
     
     async def start(self):
         """Start the coaching agent"""
         self.is_active = True
         logger.info("Coaching agent started")
         
-        # Start background tasks
-        await asyncio.gather(
-            self.message_processor(),
-            self.performance_tracker(),
-            self.session_monitor()
-        )
+        # Start background tasks (don't await them - they run indefinitely)
+        asyncio.create_task(self.message_processor())
+        asyncio.create_task(self.performance_tracker())
+        asyncio.create_task(self.session_monitor())
     
     async def stop(self):
         """Stop the coaching agent"""
@@ -164,16 +174,31 @@ class HybridCoachingAgent:
             return
         
         try:
+            # Validate telemetry data using schema validator
+            validation_result = self.schema_validator.validate_telemetry(telemetry_data)
+            if not validation_result.is_valid:
+                logger.warning(f"Telemetry validation failed: {validation_result.errors}")
+                # Continue processing with original data, but log the issues
+                telemetry_data = self.schema_validator.transform_legacy_telemetry(telemetry_data)
+            
             # Update track metadata if needed
             track_name = telemetry_data.get('track_name')
             car_name = telemetry_data.get('car_name', 'Unknown Car')
             if track_name and track_name != self.current_track_name:
                 await self.update_track_metadata(track_name)
                 self.current_track_name = track_name
+                
+                # Initialize reference lap helper when track info is available
+                if track_name and car_name and not self.reference_lap_helper:
+                    self.reference_lap_helper = create_reference_lap_helper(self.lap_buffer_manager)
+                    logger.info(f"Initialized reference lap helper for {track_name} - {car_name}")
             
             # Update lap buffer manager with track/car info
             if track_name and car_name:
                 self.lap_buffer_manager.update_track_info(track_name, car_name)
+            
+            # Add telemetry to enhanced context builder for time-series analysis
+            self.enhanced_context_builder.add_telemetry(telemetry_data)
             
             # Buffer telemetry for lap/sector analysis
             lap_event = self.lap_buffer_manager.buffer_telemetry(telemetry_data)
@@ -200,6 +225,11 @@ class HybridCoachingAgent:
             if micro_insights:
                 all_insights.extend(micro_insights)
             
+            # Add enhanced context insights if available
+            enhanced_insights = self.get_enhanced_context_insights(telemetry_data)
+            if enhanced_insights:
+                all_insights.extend(enhanced_insights)
+            
             # Track mistakes for persistent analysis
             self.track_mistakes(analysis, micro_insights)
             
@@ -214,7 +244,7 @@ class HybridCoachingAgent:
             self.rich_context_builder.add_telemetry(telemetry_data)
             
         except Exception as e:
-            logger.error(f"Error processing telemetry: {e}")
+            logger.error(f"Error processing telemetry: {e}", exc_info=True)
 
     async def _debounce_and_flush_llm_buffer(self):
         try:
@@ -505,6 +535,113 @@ class HybridCoachingAgent:
         
         return insights
     
+    def get_enhanced_context_insights(self, telemetry_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Get insights from enhanced context builder time-series analysis"""
+        insights = []
+        
+        try:
+            # Get buffer stats to check if we have enough data
+            buffer_stats = self.enhanced_context_builder.get_buffer_stats()
+            
+            if buffer_stats['total_samples'] < 10:  # Need at least 10 samples
+                return insights
+            
+            # Analyze recent time-series data for patterns
+            recent_data = list(self.enhanced_context_builder.telemetry_buffer)[-30:]  # Last 30 samples
+            
+            if len(recent_data) < 10:
+                return insights
+            
+            # Analyze driver input consistency
+            steering_angles = [point.steering_angle for point in recent_data]
+            brake_inputs = [point.brake for point in recent_data]
+            throttle_inputs = [point.throttle for point in recent_data]
+            
+            # Calculate consistency metrics
+            steering_variance = self._calculate_variance(steering_angles)
+            brake_variance = self._calculate_variance(brake_inputs)
+            throttle_variance = self._calculate_variance(throttle_inputs)
+            
+            # Generate insights based on consistency
+            if steering_variance > 0.1:  # High steering variance
+                insight = {
+                    'type': 'enhanced_context',
+                    'confidence': 0.8,
+                    'severity': 0.6,
+                    'category': 'consistency',
+                    'message': 'Steering input shows inconsistency - focus on smooth steering inputs',
+                    'data': {
+                        'steering_variance': steering_variance,
+                        'analysis_type': 'time_series_consistency',
+                        'time_window': '30_samples'
+                    }
+                }
+                insights.append(insight)
+            
+            if brake_variance > 0.15:  # High brake variance
+                insight = {
+                    'type': 'enhanced_context',
+                    'confidence': 0.85,
+                    'severity': 0.7,
+                    'category': 'braking_technique',
+                    'message': 'Brake application is inconsistent - practice smooth brake modulation',
+                    'data': {
+                        'brake_variance': brake_variance,
+                        'analysis_type': 'time_series_consistency',
+                        'time_window': '30_samples'
+                    }
+                }
+                insights.append(insight)
+            
+            # Analyze speed trends
+            speeds = [point.speed_kph for point in recent_data]
+            if len(speeds) > 5:
+                speed_trend = self._calculate_trend(speeds)
+                if speed_trend < -5:  # Significant speed decrease
+                    insight = {
+                        'type': 'enhanced_context',
+                        'confidence': 0.75,
+                        'severity': 0.5,
+                        'category': 'speed_management',
+                        'message': 'Speed is decreasing rapidly - check for early braking or missed apex',
+                        'data': {
+                            'speed_trend': speed_trend,
+                            'analysis_type': 'speed_trend_analysis',
+                            'time_window': '30_samples'
+                        }
+                    }
+                    insights.append(insight)
+            
+        except Exception as e:
+            logger.error(f"Error getting enhanced context insights: {e}")
+        
+        return insights
+    
+    def _calculate_variance(self, values: List[float]) -> float:
+        """Calculate variance of a list of values"""
+        if len(values) < 2:
+            return 0.0
+        
+        mean = sum(values) / len(values)
+        variance = sum((x - mean) ** 2 for x in values) / len(values)
+        return variance
+    
+    def _calculate_trend(self, values: List[float]) -> float:
+        """Calculate trend (slope) of values over time"""
+        if len(values) < 2:
+            return 0.0
+        
+        # Simple linear trend calculation
+        n = len(values)
+        x_sum = sum(range(n))
+        y_sum = sum(values)
+        xy_sum = sum(i * val for i, val in enumerate(values))
+        x_squared_sum = sum(i * i for i in range(n))
+        
+        # Calculate slope
+        slope = (n * xy_sum - x_sum * y_sum) / (n * x_squared_sum - x_sum * x_sum)
+        return slope
+    
     def get_severity_from_priority(self, priority: str) -> float:
         """Convert priority to severity score"""
         priority_map = {
@@ -527,24 +664,22 @@ class HybridCoachingAgent:
             insight_groups[situation].append(insight)
         
         for situation, group_insights in insight_groups.items():
-            # Use the most recent telemetry data for context
-            latest_telemetry = group_insights[-1][1]
-            latest_segment = group_insights[-1][2]
+            # Use the current telemetry data for context
             event_type = self._determine_event_type(situation)
             
             # Use rich context builder for advice context
             advice_context = self.rich_context_builder.build_structured_context(
                 event_type=event_type,
-                telemetry_data=latest_telemetry,
+                telemetry_data=telemetry_data,
                 context=self.context,
-                current_segment=latest_segment,
+                current_segment=None,  # Will be determined by segment analyzer
                 severity="medium"
             )
             
             # Process each insight in the group
             for insight in group_insights:
                 await self.process_insight_with_advice_context(
-                    insight, latest_telemetry, latest_segment, advice_context
+                    insight, telemetry_data, None, advice_context
                 )
     
     def update_performance_metrics(self, telemetry_data: Dict[str, Any], analysis: Dict[str, Any]):

@@ -8,7 +8,7 @@ import websockets
 async def test_connection():
     try:
         # Test connection to coaching data service
-        uri = "ws://localhost:8082"
+        uri = "ws://localhost:8083"
         print(f"Connecting to {uri}...")
         
         async with websockets.connect(uri) as websocket:

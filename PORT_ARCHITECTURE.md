@@ -11,7 +11,7 @@ The GT3 AI Coaching system follows a clean microservices architecture with prope
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                               │                        │
                               │                        │
-                       Port 9001 & 9002         Port 8082
+                       Port 9001 & 9002         Port 8083
 ```
 
 ## 📡 Port Assignments
@@ -31,7 +31,7 @@ The GT3 AI Coaching system follows a clean microservices architecture with prope
 
 ### Coaching Data Service (Intelligence Layer)
 
-- **Port 8082**: UI client interface
+- **Port 8083**: UI client interface
   - Processed telemetry data
   - AI coaching messages
   - Session management
@@ -42,7 +42,7 @@ The GT3 AI Coaching system follows a clean microservices architecture with prope
 ### ✅ Correct Architecture
 
 ```
-React UI ──────────────────▶ Coaching Service (8082)
+React UI ──────────────────▶ Coaching Service (8083)
                                      │
                                      ├─▶ Telemetry Stream (9001)
                                      └─▶ Session Stream (9002)
@@ -92,8 +92,8 @@ React UI ──────────────────▶ Telemetry Ser
 ### Current Setup (Correct)
 
 - **Telemetry Service**: Ports 9001 (telemetry) + 9002 (session)
-- **Coaching Service**: Port 8082 (UI clients)
-- **React UI**: Connects only to port 8082
+- **Coaching Service**: Port 8083 (UI clients)
+- **React UI**: Connects only to port 8083
 
 ### Service Dependencies
 
@@ -105,11 +105,11 @@ Telemetry Service:
 
 Coaching Service:
   - Depends on: Telemetry Service (9001, 9002)
-  - Exposes: 8082
+  - Exposes: 8083
   - Clients: UI applications
 
 React UI:
-  - Depends on: Coaching Service (8082)
+  - Depends on: Coaching Service (8083)
   - Exposes: N/A (client only)
   - Clients: End users
 ```
@@ -123,7 +123,7 @@ React UI:
    python services/telemetry_service.py
    ```
 
-2. **Start Coaching Service** (port 8082)
+2. **Start Coaching Service** (port 8083)
 
    ```bash
    cd telemetry-server
@@ -132,7 +132,7 @@ React UI:
 
 3. **Start React UI**
    ```bash
-   npm start  # Connects to localhost:8082
+   npm start  # Connects to localhost:8083
    ```
 
 ## 🔍 Debugging Connections
@@ -144,7 +144,7 @@ Test each layer independently:
 python debug-telemetry-direct.py    # Tests ports 9001, 9002
 
 # Test coaching service
-python debug-connection.py          # Tests port 8082
+python debug-connection.py          # Tests port 8083
 
 # Test UI connection
 # Open browser dev tools, check WebSocket connections

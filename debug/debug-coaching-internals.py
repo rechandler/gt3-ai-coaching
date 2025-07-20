@@ -79,7 +79,7 @@ async def test_coaching_service_internals():
     print("\n🧠 Testing UI endpoint behavior...")
     
     try:
-        async with websockets.connect("ws://localhost:8082") as ws:
+        async with websockets.connect("ws://localhost:8083") as ws:
             print("  ✅ Connected to coaching service UI endpoint")
             
             received_types = []

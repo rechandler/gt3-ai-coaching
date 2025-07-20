@@ -14,7 +14,7 @@ class PythonTelemetryClient extends EventEmitter {
     
     connect() {
         try {
-            this.ws = new WebSocket('ws://localhost:8082');
+            this.ws = new WebSocket('ws://localhost:8083');
             
             this.ws.on('open', () => {
                 console.log('[GT3] Connected to Python telemetry server');

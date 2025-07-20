@@ -14,7 +14,7 @@ async def test_telemetry_forwarding():
         import websockets
         
         print("🧠 Connecting to coaching service...")
-        async with websockets.connect("ws://localhost:8082") as ws:
+        async with websockets.connect("ws://localhost:8083") as ws:
             print("✅ Connected to coaching service UI endpoint")
             
             start_time = time.time()

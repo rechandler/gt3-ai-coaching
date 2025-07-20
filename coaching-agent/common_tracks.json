@@ -242,5 +242,107 @@
       "type": "straight",
       "description": "Long straight to finish"
     }
+  ],
+  "Fuji Speedway": [
+    {
+      "name": "Turn 1",
+      "start_pct": 0.0,
+      "end_pct": 0.1,
+      "type": "corner",
+      "description": "Sharp right-hander at the start"
+    },
+    {
+      "name": "Turn 3",
+      "start_pct": 0.2,
+      "end_pct": 0.3,
+      "type": "corner",
+      "description": "Gradual left turn after a short straight"
+    },
+    {
+      "name": "Turn 5",
+      "start_pct": 0.4,
+      "end_pct": 0.5,
+      "type": "corner",
+      "description": "Double apex right-hander"
+    },
+    {
+      "name": "S/F Straight",
+      "start_pct": 0.6,
+      "end_pct": 0.7,
+      "type": "straight",
+      "description": "Main straight leading to start/finish line"
+    },
+    {
+      "name": "Turn 10",
+      "start_pct": 0.8,
+      "end_pct": 0.9,
+      "type": "corner",
+      "description": "Hairpin left before the final straight"
+    }
+  ],
+  "Test Track": [
+    {
+      "name": "Start/Finish Straight",
+      "start_pct": 0.0,
+      "end_pct": 0.1,
+      "type": "straight",
+      "description": "Main straight leading to Turn 1"
+    },
+    {
+      "name": "Turn 1",
+      "start_pct": 0.1,
+      "end_pct": 0.2,
+      "type": "corner",
+      "description": "Sharp right-hander after the straight"
+    },
+    {
+      "name": "Esses",
+      "start_pct": 0.2,
+      "end_pct": 0.4,
+      "type": "corner",
+      "description": "Series of fast left-right turns"
+    },
+    {
+      "name": "Hairpin",
+      "start_pct": 0.4,
+      "end_pct": 0.5,
+      "type": "corner",
+      "description": "Slow hairpin turn with elevation change"
+    },
+    {
+      "name": "Back Straight",
+      "start_pct": 0.5,
+      "end_pct": 0.6,
+      "type": "straight",
+      "description": "Long straight leading to chicane"
+    },
+    {
+      "name": "Chicane",
+      "start_pct": 0.6,
+      "end_pct": 0.7,
+      "type": "chicane",
+      "description": "Quick left-right chicane section"
+    },
+    {
+      "name": "Carousel",
+      "start_pct": 0.7,
+      "end_pct": 0.8,
+      "type": "corner",
+      "description": "Long, sweeping right-hand corner"
+    },
+    {
+      "name": "Final Chicane",
+      "start_pct": 0.8,
+      "end_pct": 0.9,
+      "type": "chicane",
+      "description": "Tight chicane before Start/Finish straight"
+    },
+    {
+      "name": "Last Corner",
+      "start_pct": 0.9,
+      "end_pct": 1.0,
+      "type": "corner",
+      "description": "Fast left-hander leading to Start/Finish"
+    }
   ]
 }

@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hybrid_coach import HybridCoachingAgent
 from config import ConfigManager, get_development_config, get_production_config
 from coaching_data_service import CoachingDataService
+from session_api import SessionAPI
 
 # Setup logging
 logging.basicConfig(
@@ -47,6 +48,7 @@ class CoachingAgentRunner:
         self.environment = environment
         self.agent = None
         self.running = False
+        self.session_api = None
         
         # Load environment-specific config
         if environment == 'production':
@@ -61,21 +63,36 @@ class CoachingAgentRunner:
         if not self.config_manager.validate_config():
             raise ValueError("Invalid configuration")
     
-    async def start(self):
-        """Start the coaching agent and the coaching data service"""
+    async def start(self, enable_api: bool = False):
+        """Start the coaching agent, coaching data service, and session API"""
         try:
             logger.info("Starting GT3 Coaching Agent...")
             self.agent = HybridCoachingAgent(self.config_manager.get_config())
             self.running = True
+            
+            # Initialize session API if enabled
+            if enable_api:
+                self.session_api = SessionAPI(self.agent)
+                logger.info("Starting Session API...")
+                api_task = self.session_api.start_server(host="0.0.0.0", port=8001)
+            else:
+                api_task = None
+            
             # Start the coaching data service
             self.coaching_data_service = CoachingDataService()
             logger.info("Starting Coaching Data Service...")
-            await asyncio.gather(
+            
+            # Start all services concurrently
+            tasks = [
                 self.agent.start(),
                 self.coaching_data_service.start_service()
-            )
+            ]
+            if api_task:
+                tasks.append(api_task)
+            
+            await asyncio.gather(*tasks)
         except Exception as e:
-            logger.error(f"Error starting coaching agent or data service: {e}")
+            logger.error(f"Error starting coaching services: {e}")
             await self.stop()
             raise
     
@@ -167,6 +184,7 @@ async def main():
                        choices=['development', 'production'], help='Environment mode')
     parser.add_argument('--simulate', action='store_true', help='Run with simulated telemetry')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+    parser.add_argument('--api', action='store_true', help='Enable session API endpoints')
     
     args = parser.parse_args()
     
@@ -184,7 +202,7 @@ async def main():
             simulator = TelemetrySimulator()
 
             # Start the agent in the background
-            agent_task = asyncio.create_task(runner.start())
+            agent_task = asyncio.create_task(runner.start(enable_api=args.api))
 
             # Wait a moment for startup
             await asyncio.sleep(2)
@@ -207,7 +225,7 @@ async def main():
         else:
             # Run normally (waiting for real telemetry)
             logger.info("Waiting for telemetry data...")
-            await runner.start()
+            await runner.start(enable_api=args.api)
             await runner.stop()
 
     except KeyboardInterrupt:

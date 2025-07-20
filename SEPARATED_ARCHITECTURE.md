@@ -11,12 +11,12 @@ The system now uses a separated architecture with two distinct channels:
 - **File**: `python-server/telemetry-server.py`
 - **WebSocket**: `ws://localhost:8081`
 
-### 🧠 AI Coaching Server (Port 8082)
+### 🧠 AI Coaching Server (Port 8083)
 
 - **Purpose**: AI-generated coaching messages only
 - **Data**: Coaching advice, tips, warnings, analysis
 - **File**: `python-server/coaching-server.py`
-- **WebSocket**: `ws://localhost:8082`
+- **WebSocket**: `ws://localhost:8083`
 
 ## Benefits of Separation
 
@@ -49,7 +49,7 @@ The system now uses a separated architecture with two distinct channels:
                                ▼
                        ┌────────────────────┐    ┌─────────────────┐
                        │  AI Coaching       │───▶│   React UI      │
-                       │  Server (8082)     │    │ (Coaching)      │
+                       │  Server (8083)     │    │ (Coaching)      │
                        └────────────────────┘    └─────────────────┘
 ```
 
@@ -85,7 +85,7 @@ npm start
 The React UI now uses two WebSocket hooks:
 
 - `useIRacingTelemetry()` - Connects to port 8081 for telemetry
-- `useCoachingMessages()` - Connects to port 8082 for coaching
+- `useCoachingMessages()` - Connects to port 8083 for coaching
 
 The coaching widget now:
 
@@ -132,7 +132,7 @@ With this architecture, we can now easily add:
 
 ### Coaching not working
 
-- Verify connection to `ws://localhost:8082`
+- Verify connection to `ws://localhost:8083`
 - Check if coaching server can connect to telemetry server
 - Check coaching-server.py logs
 

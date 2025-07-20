@@ -59,7 +59,7 @@ export const useCoachingMessages = () => {
       }
 
       try {
-        coachingWs.current = new WebSocket("ws://localhost:8082");
+        coachingWs.current = new WebSocket("ws://localhost:8083");
 
         coachingWs.current.onopen = () => {
           console.log("Connected to AI coaching server");

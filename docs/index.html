@@ -9,176 +9,426 @@
     :root {
       --primary: #1e293b;
       --accent: #38bdf8;
+      --accent2: #0ea5e9;
       --bg: #f8fafc;
       --text: #0f172a;
-      --section-bg: #e0e7ef;
+      --section-bg: #f1f5f9;
       --radius: 18px;
+      --shadow: 0 4px 24px rgba(30,41,59,0.10);
+      --transition: 0.25s cubic-bezier(.4,0,.2,1);
     }
-    body {
+    html, body {
       margin: 0;
+      padding: 0;
       font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
       background: var(--bg);
       color: var(--text);
-      line-height: 1.6;
+      scroll-behavior: smooth;
     }
-    header {
-      background: linear-gradient(90deg, var(--primary) 60%, var(--accent) 100%);
+    /* Hero Section */
+    .hero {
+      min-height: 60vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(120deg, var(--primary) 60%, var(--accent) 100%);
       color: #fff;
-      padding: 60px 0 40px 0;
       text-align: center;
+      position: relative;
+      overflow: hidden;
     }
-    header h1 {
+    .hero-logo {
+      font-size: 4rem;
+      margin-bottom: 12px;
+      filter: drop-shadow(0 2px 8px rgba(0,0,0,0.12));
+      animation: popin 1s cubic-bezier(.4,0,.2,1);
+    }
+    @keyframes popin {
+      0% { transform: scale(0.7); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .hero-title {
       font-size: 3rem;
-      margin: 0 0 10px 0;
+      font-weight: 700;
       letter-spacing: 2px;
+      margin: 0 0 10px 0;
+      line-height: 1.1;
+      text-shadow: 0 2px 12px rgba(30,41,59,0.18);
     }
-    header p {
+    .hero-tagline {
       font-size: 1.4rem;
-      margin-bottom: 30px;
+      margin-bottom: 32px;
+      color: #e0e7ef;
+      text-shadow: 0 1px 4px rgba(30,41,59,0.10);
     }
     .cta-btn {
       background: var(--accent);
       color: #fff;
       border: none;
       border-radius: var(--radius);
-      padding: 16px 40px;
-      font-size: 1.2rem;
+      padding: 18px 48px;
+      font-size: 1.3rem;
       font-weight: bold;
       cursor: pointer;
-      box-shadow: 0 2px 8px rgba(30,41,59,0.12);
-      transition: background 0.2s;
+      box-shadow: var(--shadow);
+      transition: background var(--transition), transform var(--transition);
+      margin-bottom: 12px;
     }
     .cta-btn:hover {
-      background: #0ea5e9;
+      background: var(--accent2);
+      transform: translateY(-2px) scale(1.04);
     }
-    section {
-      max-width: 900px;
-      margin: 48px auto;
+    /* Features Section */
+    .section {
+      max-width: 1000px;
+      margin: 56px auto;
       background: var(--section-bg);
       border-radius: var(--radius);
-      box-shadow: 0 2px 12px rgba(30,41,59,0.07);
-      padding: 40px 32px;
+      box-shadow: var(--shadow);
+      padding: 48px 36px;
+      position: relative;
+      overflow: hidden;
     }
-    section h2 {
+    .section-title {
       margin-top: 0;
       color: var(--primary);
-      font-size: 2rem;
+      font-size: 2.2rem;
+      text-align: center;
+      margin-bottom: 36px;
+      letter-spacing: 1px;
     }
     .features {
       display: flex;
       flex-wrap: wrap;
       gap: 32px;
-      justify-content: space-between;
-    }
-    .feature {
-      flex: 1 1 250px;
-      background: #fff;
-      border-radius: var(--radius);
-      padding: 24px;
-      margin: 0 0 16px 0;
-      box-shadow: 0 1px 4px rgba(30,41,59,0.06);
-      min-width: 220px;
-    }
-    .screenshots {
-      display: flex;
-      gap: 24px;
-      flex-wrap: wrap;
       justify-content: center;
     }
-    .screenshot {
-      width: 260px;
-      height: 160px;
+    .feature {
+      flex: 1 1 220px;
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 32px 20px 24px 20px;
+      margin: 0 0 16px 0;
+      box-shadow: 0 2px 12px rgba(30,41,59,0.07);
+      min-width: 200px;
+      max-width: 260px;
+      text-align: center;
+      opacity: 0;
+      transform: translateY(40px);
+      animation: fadeInUp 0.7s forwards;
+    }
+    .feature:nth-child(1) { animation-delay: 0.1s; }
+    .feature:nth-child(2) { animation-delay: 0.25s; }
+    .feature:nth-child(3) { animation-delay: 0.4s; }
+    .feature:nth-child(4) { animation-delay: 0.55s; }
+    @keyframes fadeInUp {
+      to { opacity: 1; transform: none; }
+    }
+    .feature-icon {
+      font-size: 2.2rem;
+      margin-bottom: 12px;
+      color: var(--accent);
+      display: block;
+    }
+    /* Carousel */
+    .carousel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+    }
+    .carousel-container {
+      width: 320px;
+      height: 180px;
       background: #cbd5e1;
-      border-radius: 12px;
+      border-radius: 14px;
+      box-shadow: 0 2px 8px rgba(30,41,59,0.10);
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #64748b;
+      position: relative;
+      overflow: hidden;
+    }
+    .carousel-slide {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0; left: 0;
+      opacity: 0;
+      transition: opacity 0.5s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       font-size: 1.1rem;
+      color: #64748b;
       font-style: italic;
-      margin-bottom: 12px;
+      background: #cbd5e1;
     }
-    @media (max-width: 700px) {
-      section { padding: 24px 8px; }
-      .features { flex-direction: column; gap: 16px; }
-      .screenshots { flex-direction: column; gap: 12px; }
+    .carousel-slide.active {
+      opacity: 1;
+      z-index: 1;
     }
+    .carousel-controls {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+      justify-content: center;
+    }
+    .carousel-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #e0e7ef;
+      border: 2px solid var(--accent);
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .carousel-dot.active {
+      background: var(--accent);
+    }
+    /* How It Works */
+    .steps {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 32px;
+      justify-content: center;
+      margin-top: 32px;
+    }
+    .step {
+      flex: 1 1 220px;
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 28px 18px 20px 18px;
+      box-shadow: 0 2px 12px rgba(30,41,59,0.07);
+      min-width: 180px;
+      max-width: 240px;
+      text-align: center;
+      position: relative;
+      opacity: 0;
+      transform: translateY(40px);
+      animation: fadeInUp 0.7s forwards;
+    }
+    .step:nth-child(1) { animation-delay: 0.1s; }
+    .step:nth-child(2) { animation-delay: 0.25s; }
+    .step:nth-child(3) { animation-delay: 0.4s; }
+    .step-icon {
+      font-size: 2rem;
+      margin-bottom: 10px;
+      color: var(--accent2);
+      display: block;
+    }
+    /* Download Section */
+    .download-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      margin-top: 24px;
+    }
+    .download-btn {
+      background: linear-gradient(90deg, var(--accent) 60%, var(--accent2) 100%);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 18px 48px;
+      font-size: 1.3rem;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+      transition: background var(--transition), transform var(--transition);
+      margin-bottom: 8px;
+    }
+    .download-btn:hover {
+      background: var(--primary);
+      transform: translateY(-2px) scale(1.04);
+    }
+    .quick-steps {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 18px;
+      justify-content: center;
+      margin-top: 10px;
+    }
+    .quick-step {
+      background: #fff;
+      border-radius: 12px;
+      padding: 10px 18px;
+      box-shadow: 0 1px 4px rgba(30,41,59,0.06);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1.05rem;
+      color: var(--primary);
+    }
+    .quick-step-icon {
+      color: #22c55e;
+      font-size: 1.2rem;
+    }
+    /* Contact Section */
+    .contact-icons {
+      display: flex;
+      gap: 28px;
+      justify-content: center;
+      margin-top: 18px;
+    }
+    .contact-icon {
+      font-size: 2.1rem;
+      color: var(--accent);
+      background: #fff;
+      border-radius: 50%;
+      padding: 10px;
+      box-shadow: 0 2px 8px rgba(30,41,59,0.10);
+      transition: background 0.2s, color 0.2s, transform 0.2s;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .contact-icon:hover {
+      background: var(--accent);
+      color: #fff;
+      transform: scale(1.12);
+    }
+    /* Footer */
     footer {
       text-align: center;
       color: #64748b;
       font-size: 1rem;
-      margin: 40px 0 20px 0;
+      margin: 48px 0 24px 0;
     }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    /* Responsive */
+    @media (max-width: 900px) {
+      .section { padding: 32px 8px; }
+      .features, .steps, .quick-steps { flex-direction: column; gap: 16px; }
+      .carousel-container { width: 98vw; max-width: 340px; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>GT3 AI Coaching</h1>
-    <p>Elevate your sim racing with real-time AI-powered coaching for Assetto Corsa Competizione.</p>
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-logo">🏎️</div>
+    <div class="hero-title">GT3 AI Coaching</div>
+    <div class="hero-tagline">Elevate your sim racing with real-time AI-powered coaching for Assetto Corsa Competizione.</div>
     <a href="#download"><button class="cta-btn">Download Now</button></a>
-  </header>
+  </section>
 
-  <section id="features">
-    <h2>Features</h2>
+  <!-- Features Section -->
+  <section class="section" id="features">
+    <div class="section-title">Features</div>
     <div class="features">
       <div class="feature">
+        <span class="feature-icon">🎧</span>
         <strong>Real-Time Feedback</strong><br>
         Get actionable advice as you drive, just like a pro coach in your ear.
       </div>
       <div class="feature">
+        <span class="feature-icon">🤖</span>
         <strong>AI-Powered Insights</strong><br>
         Advanced analysis of your laps, mistakes, and improvement areas.
       </div>
       <div class="feature">
+        <span class="feature-icon">⚡</span>
         <strong>Easy Setup</strong><br>
         Simple installation and seamless integration with ACC.
       </div>
       <div class="feature">
+        <span class="feature-icon">🎛️</span>
         <strong>Customizable Coaching</strong><br>
         Tailor the feedback style and detail to your preferences.
       </div>
     </div>
   </section>
 
-  <section id="screenshots">
-    <h2>Screenshots</h2>
-    <div class="screenshots">
-      <div class="screenshot">[App Overlay Screenshot]</div>
-      <div class="screenshot">[Session Analysis Screenshot]</div>
-      <div class="screenshot">[Settings Panel Screenshot]</div>
+  <!-- Screenshots Carousel -->
+  <section class="section" id="screenshots">
+    <div class="section-title">Screenshots</div>
+    <div class="carousel">
+      <div class="carousel-container">
+        <div class="carousel-slide active">[App Overlay Screenshot]</div>
+        <div class="carousel-slide">[Session Analysis Screenshot]</div>
+        <div class="carousel-slide">[Settings Panel Screenshot]</div>
+      </div>
+      <div class="carousel-controls">
+        <div class="carousel-dot active" data-slide="0"></div>
+        <div class="carousel-dot" data-slide="1"></div>
+        <div class="carousel-dot" data-slide="2"></div>
+      </div>
     </div>
   </section>
 
-  <section id="how-it-works">
-    <h2>How It Works</h2>
-    <ol>
-      <li>Install GT3 AI Coaching and launch Assetto Corsa Competizione.</li>
-      <li>Drive as usual—our AI listens to your telemetry and provides live feedback.</li>
-      <li>Review your performance and get tips for your next session.</li>
-    </ol>
+  <!-- How It Works -->
+  <section class="section" id="how-it-works">
+    <div class="section-title">How It Works</div>
+    <div class="steps">
+      <div class="step">
+        <span class="step-icon">⬇️</span>
+        <strong>1. Install</strong><br>
+        Download GT3 AI Coaching and launch Assetto Corsa Competizione.
+      </div>
+      <div class="step">
+        <span class="step-icon">🏁</span>
+        <strong>2. Drive</strong><br>
+        Our AI listens to your telemetry and provides live feedback as you race.
+      </div>
+      <div class="step">
+        <span class="step-icon">📈</span>
+        <strong>3. Improve</strong><br>
+        Review your performance and get tips for your next session.
+      </div>
+    </div>
   </section>
 
-  <section id="download">
-    <h2>Download & Install</h2>
-    <p>
-      <a href="https://github.com/your-repo/gt3-ai-coaching/releases" class="cta-btn">Get the Latest Release</a>
-    </p>
-    <p>Follow the <a href="https://github.com/your-repo/gt3-ai-coaching#readme">installation guide</a> for step-by-step setup instructions.</p>
+  <!-- Download Section -->
+  <section class="section" id="download">
+    <div class="section-title">Download & Install</div>
+    <div class="download-area">
+      <a href="https://github.com/your-repo/gt3-ai-coaching/releases" target="_blank"><button class="download-btn">Get the Latest Release</button></a>
+      <div class="quick-steps">
+        <div class="quick-step"><span class="quick-step-icon">✔️</span> Download the installer</div>
+        <div class="quick-step"><span class="quick-step-icon">✔️</span> Run and follow setup steps</div>
+        <div class="quick-step"><span class="quick-step-icon">✔️</span> Start racing with AI coaching!</div>
+      </div>
+      <div style="margin-top:12px;">
+        <a href="https://github.com/your-repo/gt3-ai-coaching#readme" target="_blank">Read the full installation guide</a>
+      </div>
+    </div>
   </section>
 
-  <section id="contact">
-    <h2>Contact & Community</h2>
-    <p>
-      <a href="https://github.com/your-repo/gt3-ai-coaching">GitHub</a> |
-      <a href="mailto:your@email.com">Email</a> |
-      <a href="https://discord.gg/your-invite">Discord</a>
-    </p>
+  <!-- Contact & Community -->
+  <section class="section" id="contact">
+    <div class="section-title">Contact & Community</div>
+    <div class="contact-icons">
+      <a href="https://github.com/your-repo/gt3-ai-coaching" class="contact-icon" target="_blank" title="GitHub"><span>🐙</span></a>
+      <a href="mailto:your@email.com" class="contact-icon" title="Email"><span>✉️</span></a>
+      <a href="https://discord.gg/your-invite" class="contact-icon" target="_blank" title="Discord"><span>💬</span></a>
+    </div>
   </section>
 
   <footer>
     &copy; 2024 GT3 AI Coaching. Not affiliated with Kunos Simulazioni or Assetto Corsa Competizione.
   </footer>
+
+  <script>
+    // Carousel logic
+    const slides = document.querySelectorAll('.carousel-slide');
+    const dots = document.querySelectorAll('.carousel-dot');
+    let current = 0;
+    function showSlide(idx) {
+      slides.forEach((slide, i) => {
+        slide.classList.toggle('active', i === idx);
+        dots[i].classList.toggle('active', i === idx);
+      });
+      current = idx;
+    }
+    dots.forEach((dot, i) => {
+      dot.addEventListener('click', () => showSlide(i));
+    });
+    // Optional: auto-advance
+    setInterval(() => {
+      showSlide((current + 1) % slides.length);
+    }, 5000);
+  </script>
 </body>
 </html> 

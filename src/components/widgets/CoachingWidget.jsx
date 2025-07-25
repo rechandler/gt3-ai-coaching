@@ -194,52 +194,6 @@ const CoachingWidget = React.memo(({
               Clear
             </button>
           )}
-          <button
-            onClick={() => {
-              // Add a test message with audio
-              const testMessage = {
-                id: `test_${Date.now()}`,
-                message: "Test message with audio - Brake earlier for turn 1",
-                category: "test",
-                priority: 5,
-                confidence: 90,
-                timestamp: Date.now(),
-                isNew: true,
-                secondaryMessages: [],
-                improvementPotential: null,
-                // Longer test audio (3 seconds of silence with proper WAV header)
-                audio: "UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT"
-              };
-              setCoachingMessages(prev => [testMessage, ...prev.slice(0, 3)]);
-            }}
-            className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 rounded hover:bg-gray-700 transition-colors"
-            title="Test audio"
-          >
-            Test Audio
-          </button>
-          <button
-            onClick={() => {
-              // Add a test message with longer audio
-              const testMessage = {
-                id: `test_long_${Date.now()}`,
-                message: "Test message with longer audio - Focus on your racing line",
-                category: "test",
-                priority: 5,
-                confidence: 90,
-                timestamp: Date.now(),
-                isNew: true,
-                secondaryMessages: [],
-                improvementPotential: null,
-                // Create a longer test audio using data URL
-                audio: "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT"
-              };
-              setCoachingMessages(prev => [testMessage, ...prev.slice(0, 3)]);
-            }}
-            className="text-xs text-green-400 hover:text-green-300 px-2 py-1 rounded hover:bg-gray-700 transition-colors"
-            title="Test longer audio"
-          >
-            Test Long Audio
-          </button>
           <div className="text-xs text-gray-400">Auto-expire in 8s</div>
         </div>
       </div>

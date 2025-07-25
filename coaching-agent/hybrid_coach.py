@@ -49,51 +49,15 @@ class DecisionEngine:
         self.ai_usage_threshold = 0.3  # 30% of requests can use AI
     
     def should_use_ai(self, insight: Dict[str, Any], local_confidence: float) -> bool:
-        """Decide whether to use AI coaching"""
-        current_time = time.time()
-        
-        # Clean old AI usage records (older than 1 hour)
-        self.ai_usage_count = [t for t in self.ai_usage_count if current_time - t < 3600]
-        
-        # Check if we're within AI usage limits
-        current_usage_rate = len(self.ai_usage_count) / max(1, len(self.ai_usage_count) + 10)
-        if current_usage_rate > self.ai_usage_threshold:
-            logger.debug(f"AI usage rate too high: {current_usage_rate:.2f} > {self.ai_usage_threshold}")
-            return False
-        
-        # Use AI for high-importance, low-confidence insights
-        importance = insight.get('importance', 0.5)
-        message_importance = importance * insight.get('confidence', 0.5)
-        situation = insight.get('situation', '')
-        
-        # More permissive: Use AI for any insight with moderate importance
-        if message_importance > 0.3:  # Lowered from 0.4
-            logger.debug(f"Using AI for moderate importance: {message_importance:.2f} for {situation}")
-            return True
-        
-        # AI for specific event types that benefit from rich context
-        ai_beneficial_situations = [
-            'understeer', 'oversteer', 'offtrack', 'bad_exit', 
-            'missed_apex', 'sector_analysis', 'race_strategy'
-        ]
-        
-        if situation in ai_beneficial_situations:
-            logger.debug(f"Using AI for beneficial situation: {situation} with importance {message_importance:.2f}")
-            return True
-        
-        # AI for complex situations or when local confidence is low
-        if message_importance > 0.7 and local_confidence < 0.6:
-            logger.debug(f"Using AI for high importance ({message_importance:.2f}) and low confidence ({local_confidence:.2f})")
-            return True
-        
-        logger.debug(f"Not using AI for {situation}: importance={message_importance:.2f}, confidence={local_confidence:.2f}")
-        return False
+        """Always use AI coaching for all insights/messages"""
+        return True
 
 @dataclass
 class CoachingContext:
     """Current coaching context"""
     track_name: str = ""
     car_name: str = ""
+    category: str = ""  # Added category field
     session_type: str = ""
     lap_count: int = 0
     best_lap_time: float = 0.0
@@ -103,6 +67,14 @@ class CoachingContext:
     tire_condition: str = ""
     fuel_level: float = 0.0
     coaching_mode: CoachingMode = CoachingMode.INTERMEDIATE
+
+    def update_from_session_state(self, session_state):
+        """Update context fields from a SessionState object."""
+        self.track_name = getattr(session_state, 'track_name', self.track_name)
+        self.car_name = getattr(session_state, 'car_name', self.car_name)
+        self.category = getattr(session_state, 'category', self.category)
+        self.session_type = getattr(session_state, 'session_type', self.session_type)
+        self.coaching_mode = getattr(session_state, 'coaching_mode', self.coaching_mode)
 
 class HybridCoachingAgent:
     """Hybrid coaching agent combining local ML and remote AI"""
@@ -165,7 +137,15 @@ class HybridCoachingAgent:
         """Start the coaching agent"""
         self.is_active = True
         logger.info("Coaching agent started")
-        
+
+        # Always load segment metadata for the current track at session start
+        track_name = getattr(self.context, 'track_name', None)
+        if track_name:
+            logger.info(f"Triggering segment metadata load for track: {track_name}")
+            await self.track_metadata_manager.ensure_metadata_for_track(track_name, self.context)
+        else:
+            logger.warning("No track name set in context at session start; segment metadata not loaded.")
+
         # Check remote AI coach availability
         if self.remote_coach.is_available():
             logger.info("Remote AI coach is available and ready")
@@ -245,10 +225,25 @@ class HybridCoachingAgent:
 
             # Process through telemetry analyzer
             analysis = self.telemetry_analyzer.analyze(telemetry_data)
+
+            # Inject computed lap/sector data into telemetry_data for prompt/rich context
+            if analysis.get('lap'):
+                lap_analysis = analysis['lap']
+                telemetry_data['lapCurrentLapTime'] = lap_analysis.lap_time
+                telemetry_data['lapBestLapTime'] = self.telemetry_analyzer.best_lap_time if hasattr(self.telemetry_analyzer, 'best_lap_time') else lap_analysis.lap_time
+                telemetry_data['sector_times'] = lap_analysis.sector_times
+            if analysis.get('sector'):
+                sector_analysis = analysis['sector']
+                telemetry_data['sector_deltas'] = sector_analysis.get('deltas', [])
+            if analysis.get('lap') and hasattr(self.telemetry_analyzer, 'completed_laps'):
+                # Delta to session best lap
+                best_lap = min([lap.lap_time for lap in self.telemetry_analyzer.completed_laps]) if self.telemetry_analyzer.completed_laps else lap_analysis.lap_time
+                telemetry_data['lapDeltaToSessionBestLap'] = lap_analysis.lap_time - best_lap
             
-            # Get local ML insights
-            local_insights = await self.local_coach.analyze(telemetry_data, analysis)
-            
+            # Get insights from local coach
+            # Per user request, disable local ML coach insights for now.
+            local_insights = []
+
             # Combine insights and generate coaching messages
             all_insights = local_insights.copy()
             
@@ -264,12 +259,15 @@ class HybridCoachingAgent:
                 logger.info(f"Adding {len(enhanced_insights)} enhanced context insights")
                 all_insights.extend(enhanced_insights)
             
-            # Track mistakes for persistent analysis
-            self.track_mistakes(analysis, micro_insights)
-            
-            # Generate coaching messages
-            if all_insights:
-                await self.generate_coaching_messages(all_insights, telemetry_data)
+            # Track mistakes based on combined insights
+            self.track_mistakes(analysis, all_insights)
+
+            # If no specific insights are found, do nothing. This prevents "General Feedback" spam.
+            if not all_insights:
+                return
+
+            # Generate coaching messages from insights
+            await self.generate_coaching_messages(all_insights, telemetry_data)
             
             # Update performance tracking
             self.update_performance_metrics(telemetry_data, analysis)
@@ -613,26 +611,21 @@ class HybridCoachingAgent:
         try:
             # Get buffer stats to check if we have enough data
             buffer_stats = self.enhanced_context_builder.get_buffer_stats()
-            
-            if buffer_stats['buffer_size'] < 10:  # Need at least 10 samples
+            # Use 'buffer_size' instead of 'total_samples'
+            if buffer_stats.get('buffer_size', 0) < 10:  # Need at least 10 samples
                 return insights
-            
             # Analyze recent time-series data for patterns
             recent_data = list(self.enhanced_context_builder.telemetry_buffer)[-30:]  # Last 30 samples
-            
             if len(recent_data) < 10:
                 return insights
-            
             # Analyze driver input consistency
             steering_angles = [point.steering_angle for point in recent_data]
             brake_inputs = [point.brake for point in recent_data]
             throttle_inputs = [point.throttle for point in recent_data]
-            
             # Calculate consistency metrics
             steering_variance = self._calculate_variance(steering_angles)
             brake_variance = self._calculate_variance(brake_inputs)
             throttle_variance = self._calculate_variance(throttle_inputs)
-            
             # Generate insights based on consistency
             if steering_variance > 0.1:  # High steering variance
                 insight = {
@@ -648,7 +641,6 @@ class HybridCoachingAgent:
                     }
                 }
                 insights.append(insight)
-            
             if brake_variance > 0.15:  # High brake variance
                 insight = {
                     'type': 'enhanced_context',
@@ -663,7 +655,6 @@ class HybridCoachingAgent:
                     }
                 }
                 insights.append(insight)
-            
             # Analyze speed trends
             speeds = [point.speed_kph for point in recent_data]
             if len(speeds) > 5:
@@ -682,7 +673,8 @@ class HybridCoachingAgent:
                         }
                     }
                     insights.append(insight)
-            
+        except KeyError as e:
+            logger.error(f"Error getting enhanced context insights: missing key {e} in buffer_stats. Available keys: {list(buffer_stats.keys())}")
         except Exception as e:
             logger.error(f"Error getting enhanced context insights: {e}")
         
@@ -952,6 +944,44 @@ class HybridCoachingAgent:
                 )
                 await self.message_queue.add_message(coaching_message)
                 
+                # --- General feedback message (improvements, mistakes, positives) ---
+                # Get session summary from mistake tracker
+                summary = self.mistake_tracker.get_session_summary()
+                improvement_areas = summary.improvement_areas
+                recommendations = summary.recommendations
+                most_costly = summary.most_costly_mistakes
+                positives = []
+                if summary.session_score > 0.8:
+                    positives.append("Great consistency and low mistake rate!")
+                elif summary.session_score > 0.6:
+                    positives.append("Good session, but some areas to improve.")
+                else:
+                    positives.append("Session had some challenges, but keep pushing!")
+                # Build feedback message
+                feedback_lines = []
+                if improvement_areas:
+                    feedback_lines.append("Improvements: " + "; ".join(improvement_areas))
+                if most_costly:
+                    costly = [f"{m.corner_name}: {m.description} ({m.time_loss:.1f}s lost)" for m in most_costly]
+                    feedback_lines.append("Key mistakes: " + "; ".join(costly))
+                if recommendations:
+                    feedback_lines.append("Advice: " + "; ".join(recommendations))
+                if positives:
+                    feedback_lines.append("Positives: " + "; ".join(positives))
+                if feedback_lines:
+                    feedback_message = CoachingMessage(
+                        content="Lap Feedback: " + " | ".join(feedback_lines),
+                        category="lap_feedback",
+                        priority=MessagePriority.MEDIUM,
+                        source="lap_feedback",
+                        confidence=1.0,
+                        context="lap_feedback",
+                        timestamp=time.time(),
+                        audio=None
+                    )
+                    await self.message_queue.add_message(feedback_message)
+                # --- End general feedback message ---
+                
                 # Update session manager
                 self.session_manager.add_lap_data(
                     lap_data.lap_time,
@@ -991,6 +1021,38 @@ class HybridCoachingAgent:
                 )
                 await self.message_queue.add_message(coaching_message)
                 
+                # --- General sector feedback ---
+                # Use segment analyzer to get feedback for this sector if available
+                feedback_lines = []
+                if hasattr(self, 'segment_analyzer') and self.segment_analyzer:
+                    # Try to get feedback for the sector (segment)
+                    seg_feedback = []
+                    if hasattr(self.segment_analyzer, 'generate_segment_feedback'):
+                        # Find the segment info
+                        if hasattr(self.segment_analyzer, 'track_segments') and self.segment_analyzer.track_segments:
+                            seg_idx = sector_data.sector_number
+                            if seg_idx < len(self.segment_analyzer.track_segments):
+                                segment = self.segment_analyzer.track_segments[seg_idx]
+                                # Use last metrics if available
+                                if hasattr(self.segment_analyzer, 'best_lap_segments') and self.segment_analyzer.best_lap_segments:
+                                    metrics = self.segment_analyzer.best_lap_segments.get(segment['name'], {})
+                                    seg_feedback = self.segment_analyzer.generate_segment_feedback(segment, metrics)
+                    if seg_feedback:
+                        feedback_lines.extend(seg_feedback)
+                if feedback_lines:
+                    feedback_message = CoachingMessage(
+                        content="Sector Feedback: " + " | ".join(feedback_lines),
+                        category="sector_feedback",
+                        priority=MessagePriority.MEDIUM,
+                        source="sector_feedback",
+                        confidence=1.0,
+                        context="sector_feedback",
+                        timestamp=time.time(),
+                        audio=None
+                    )
+                    await self.message_queue.add_message(feedback_message)
+                # --- End general sector feedback ---
+                
                 logger.info(f"Sector {sector_data.sector_number + 1} completed: {sector_data.sector_time:.3f}s")
                 
         except Exception as e:
@@ -1029,6 +1091,10 @@ async def main():
             'api_key': 'your-openai-api-key',
             'model': 'gpt-3.5-turbo',
             'max_requests_per_minute': 5
+        },
+        'coaching_config': {
+            'enable_local_coaching': True,
+            'enable_ai_coaching': True
         }
     }
     

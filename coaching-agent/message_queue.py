@@ -193,9 +193,11 @@ class MessageFilter:
     
     def should_deliver(self, message: CoachingMessage) -> bool:
         """Check if message should be delivered"""
+        # Always deliver remote_ai (LLM) messages
+        if getattr(message, 'source', None) == 'remote_ai':
+            return True
         current_time = time.time()
-        
-        # Check for recent similar messages
+        # Check for recent similar messages (only for local_ml)
         for recent_msg in self.recent_messages:
             if self.is_similar(message, recent_msg):
                 cooldown = self.category_cooldowns.get(
@@ -203,7 +205,6 @@ class MessageFilter:
                 )
                 if current_time - recent_msg.timestamp < cooldown:
                     return False
-        
         return True
     
     def is_similar(self, msg1: CoachingMessage, msg2: CoachingMessage) -> bool:
@@ -225,12 +226,14 @@ class MessageFilter:
         self.recent_messages.append(message)
 
 class CoachingMessageQueue:
-    """Priority queue for coaching messages with combination capabilities"""
-    
+    """Queue for managing coaching messages with priority and deduplication"""
     def __init__(self, config: Dict[str, Any] = None):
+        self.config = config or {}
         self.queue = []
+        self.delivered_messages = deque(maxlen=100)
         self.filter = MessageFilter()
         self.combiner = MessageCombiner(config)
+        self.logger = logging.getLogger(__name__)
         self.lock = asyncio.Lock()
         self.delivery_stats = {
             'total_added': 0,
@@ -242,32 +245,23 @@ class CoachingMessageQueue:
         # Global message rate limit (messages per minute)
         self.global_rate_limit = DEFAULT_CONFIG['message_config'].get('global_message_rate_limit', 5)
         self.delivered_timestamps = []  # List of timestamps of delivered messages
-        logger.info("Coaching message queue initialized with message combination")
+        self.logger.info("Coaching message queue initialized with message combination")
     
     async def add_message(self, message: CoachingMessage):
-        """Add a message to the queue, checking for combination opportunities"""
-        async with self.lock:
-            self.delivery_stats['total_added'] += 1
-            
-            # Check if message should be filtered
-            if not self.filter.should_deliver(message):
-                self.delivery_stats['filtered_duplicates'] += 1
-                logger.debug(f"Filtered duplicate message: {message.category}")
-                return False
-            
-            # Check for combination opportunities with existing messages
-            combined_message = await self._check_for_combination(message)
-            if combined_message:
-                # Replace the original messages with the combined one
-                await self._replace_messages_with_combined(combined_message)
-                self.delivery_stats['messages_combined'] += 1
-                logger.debug(f"Combined {len(combined_message.content.split('|'))} messages into one: {combined_message.content[:50]}...")
-                return True
-            
-            # Add to priority queue
-            heapq.heappush(self.queue, message)
-            logger.debug(f"Added message to queue: {message.category} (priority: {message.priority.name})")
-            return True
+        # Log every message, regardless of delivery
+        self.logger.info(f"[LOG ALL] Queued message: [{message.category}] {message.content} (source={message.source}, confidence={message.confidence:.2f})")
+        # Check for LLM (remote_ai) priority
+        if message.source == 'remote_ai':
+            # Remove any local_ml messages in the queue for the same category within 3s
+            self.queue = [m for m in self.queue if not (m.category == message.category and m.source == 'local_ml' and abs(m.timestamp - message.timestamp) < 3.0)]
+        elif message.source == 'local_ml':
+            # If a remote_ai message for this category and time window exists, skip adding
+            for m in self.queue:
+                if m.category == message.category and m.source == 'remote_ai' and abs(m.timestamp - message.timestamp) < 3.0:
+                    self.logger.info(f"[LOG ALL] Skipping local_ml message due to remote_ai priority: [{message.category}] {message.content}")
+                    return
+        # Normal queueing
+        heapq.heappush(self.queue, message)
     
     async def _check_for_combination(self, new_message: CoachingMessage) -> Optional[CoachingMessage]:
         """Check if the new message can be combined with existing messages"""
@@ -319,7 +313,7 @@ class CoachingMessageQueue:
             self.delivered_timestamps = [t for t in self.delivered_timestamps if now - t < 60]
             # Enforce global rate limit for non-critical messages
             if message.priority.name != 'CRITICAL' and len(self.delivered_timestamps) >= self.global_rate_limit:
-                logger.debug("Global message rate limit reached; skipping delivery of non-critical message.")
+                self.logger.debug("Global message rate limit reached; skipping delivery of non-critical message.")
                 return None
             # Pop and deliver the message
             message = heapq.heappop(self.queue)

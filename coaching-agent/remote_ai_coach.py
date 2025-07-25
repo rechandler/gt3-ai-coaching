@@ -299,8 +299,11 @@ class RemoteAICoach:
                 ml_analysis=ml_analysis
             )
             
+            # Get category from context, fallback to 'racing'
+            category = getattr(context, 'category', 'racing')
+            
             # Make API request
-            response = await self.make_api_request(prompt)
+            response = await self.make_api_request(prompt, category=category)
             
             if response:
                 # Record successful request
@@ -325,7 +328,7 @@ class RemoteAICoach:
             self.update_stats(False, 0)
             return None
     
-    async def make_api_request(self, prompt: str, system_prompt: Optional[str] = None, max_tokens: int = 150) -> Optional[Dict[str, Any]]:
+    async def make_api_request(self, prompt: str, system_prompt: Optional[str] = None, max_tokens: int = 150, category: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Make request to OpenAI API, then (optionally) generate audio using TTS endpoint."""
         
         if not self.rate_limiter.can_make_request():
@@ -341,8 +344,12 @@ class RemoteAICoach:
             'Content-Type': 'application/json'
         }
         
-        # Use provided system prompt or default coaching prompt
-        system_content = system_prompt if system_prompt is not None else 'You are an expert GT3 racing coach. Provide concise, actionable advice.'
+        # Use provided system prompt or default coaching prompt, dynamically using category
+        cat = (category or '').strip()
+        if not cat or cat.lower() == 'racing':
+            system_content = system_prompt if system_prompt is not None else 'You are an expert racing coach. Provide concise, actionable advice.'
+        else:
+            system_content = system_prompt if system_prompt is not None else f'You are an expert {cat} racing coach. Provide concise, actionable advice.'
         
         payload = {
             'model': self.model,
@@ -424,7 +431,7 @@ class RemoteAICoach:
             logger.error(f"API request error: {e}")
             return None
     
-    async def generate_raw(self, prompt: str, system_prompt: str = "You are a helpful assistant.", max_tokens: int = 150) -> Optional[Dict[str, Any]]:
+    async def generate_raw(self, prompt: str, system_prompt: str = "You are a helpful assistant.", max_tokens: int = 150, category: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Generate raw response without coaching context"""
         
         if not self.is_available():
@@ -435,7 +442,7 @@ class RemoteAICoach:
             start_time = time.time()
             
             # Make API request with custom system prompt and token limit
-            response = await self.make_api_request(prompt, system_prompt, max_tokens)
+            response = await self.make_api_request(prompt, system_prompt, max_tokens, category=category)
             
             if response:
                 # Record successful request

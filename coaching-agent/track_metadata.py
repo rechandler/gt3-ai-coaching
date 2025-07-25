@@ -21,15 +21,20 @@ class TrackMetadataManager:
         Ensure metadata for the given track is loaded (query LLM if needed).
         """
         if not track_name:
+            logger.warning("No track name provided for segment metadata loading.")
             return
         if track_name == self.current_track_name and self.track_metadata:
+            logger.info(f"Segment metadata already loaded for track: {track_name}")
+            logger.debug(f"Loaded segment metadata: {self.track_metadata}")
             return  # Already loaded
         if track_name in self._metadata_cache:
             self.current_track_name = track_name
             self.track_metadata = self._metadata_cache[track_name]
+            logger.info(f"Loaded segment metadata for track {track_name} from cache.")
+            logger.debug(f"Cached segment metadata: {self.track_metadata}")
             return
         # Query LLM for track breakdown
-        logger.info(f"Querying LLM for metadata for track: {track_name}")
+        logger.info(f"Querying LLM for segment metadata for track: {track_name}")
         prompt = (
             f"Provide a JSON array breakdown of the '{track_name}' racing circuit. "
             "For each segment or turn, include: 'name', 'number' (if any), and "
@@ -44,7 +49,7 @@ class TrackMetadataManager:
             context
         )
         if not ai_response or not ai_response.get('message'):
-            logger.warning(f"No metadata received from LLM for track: {track_name}")
+            logger.warning(f"No segment metadata received from LLM for track: {track_name}")
             return
         try:
             # Try to extract JSON from the response
@@ -53,11 +58,13 @@ class TrackMetadataManager:
                 self._metadata_cache[track_name] = metadata
                 self.current_track_name = track_name
                 self.track_metadata = metadata
-                logger.info(f"Loaded metadata for track: {track_name}")
+                logger.info(f"Loaded segment metadata for track: {track_name} from LLM.")
+                logger.debug(f"LLM segment metadata: {metadata}")
             else:
-                logger.warning(f"Failed to parse metadata JSON for track: {track_name}")
+                logger.warning(f"Failed to parse segment metadata JSON for track: {track_name}")
+                logger.debug(f"Raw LLM response: {ai_response['message']}")
         except Exception as e:
-            logger.error(f"Error parsing LLM metadata for track: {track_name}: {e}")
+            logger.error(f"Error parsing LLM segment metadata for track: {track_name}: {e}")
 
     def get_current_segment(self, lap_distance_pct: float) -> Optional[Dict[str, Any]]:
         """
@@ -82,6 +89,10 @@ class TrackMetadataManager:
             # Try to load metadata for this track
             await self.ensure_metadata_for_track(track_name)
             return self._metadata_cache.get(track_name)
+
+    async def get_track_segments(self, track_name: str, context: Any = None) -> Optional[List[Dict[str, Any]]]:
+        """Get track segments for the specified track (for compatibility with HybridCoachingAgent)."""
+        return await self.get_track_metadata(track_name)
 
     def get_segment_at_distance(self, track_name: str, lap_dist_pct: float) -> Optional[Dict[str, Any]]:
         """Get the segment at the specified lap distance percentage"""

@@ -103,6 +103,7 @@ class CoachingDataService:
         self.coaching_agent_active = False
         if COACHING_AGENT_AVAILABLE:
             self._initialize_coaching_agent()
+        self._previous_lap_completed = 0
     
     def _initialize_coaching_agent(self):
         """Initialize the hybrid coaching agent"""
@@ -231,7 +232,10 @@ class CoachingDataService:
             'gear': 'gear',
             'rpm': 'rpm',
             'lapCurrentLapTime': 'current_lap_time',
-            'lapLastLapTime': 'last_lap_time'
+            'lapLastLapTime': 'last_lap_time',
+            'fuelLevel': 'fuelLevel',
+            'fuelLevelPct': 'fuelLevelPct',
+            'fuelUsePerHour': 'fuelUsePerHour'
         }
         for telemetry_key, coaching_key in field_map.items():
             if telemetry_key in telemetry_data:
@@ -353,6 +357,10 @@ class CoachingDataService:
                 # Update session state
                 await self.update_session_state(session_data)
                 
+                # Update coaching agent context if available
+                if self.coaching_agent and hasattr(self.coaching_agent, 'context') and hasattr(self.coaching_agent.context, 'update_from_session_state'):
+                    self.coaching_agent.context.update_from_session_state(self.session_state)
+                
                 # Forward to UI clients
                 await self.broadcast_to_ui({
                     "type": "sessionInfo",
@@ -377,7 +385,15 @@ class CoachingDataService:
         try:
             # Start with the original telemetry
             processed = telemetry_data.copy()
-            
+
+            # Detect lap completion using LapCompleted integer
+            current_lap_completed = telemetry_data.get('LapCompleted', 0)
+            if current_lap_completed > getattr(self, '_previous_lap_completed', 0):
+                processed['lap_completed'] = True
+            else:
+                processed['lap_completed'] = False
+            self._previous_lap_completed = current_lap_completed
+
             # Add coaching-specific calculations
             speed = telemetry_data.get('speed', 0)
             rpm = telemetry_data.get('rpm', 0)

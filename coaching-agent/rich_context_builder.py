@@ -543,49 +543,43 @@ class RichContextBuilder:
     
     def _calculate_overall_anomaly(self, telemetry_data: Dict[str, Any]) -> float:
         """Calculate overall anomaly score"""
-        # Simple heuristic-based anomaly detection
+        # More sensitive heuristic-based anomaly detection
         speed = telemetry_data.get('speed', 0)
         throttle = telemetry_data.get('throttle_pct', 0)
         brake = telemetry_data.get('brake_pct', 0)
         steering = abs(telemetry_data.get('steering_angle', 0))
-        
-        # Anomaly indicators
+
         anomalies = []
-        
-        # High throttle + high brake
-        if throttle > 50 and brake > 20:
-            anomalies.append(0.8)
-        
-        # High speed + high steering
-        if speed > 150 and steering > 0.5:
-            anomalies.append(0.6)
-        
-        # Low speed + high throttle
-        if speed < 50 and throttle > 80:
+
+        # Lowered thresholds for sensitivity
+        if throttle > 30 and brake > 10:
+            anomalies.append(0.7)
+        if speed > 100 and steering > 0.3:
+            anomalies.append(0.5)
+        if speed < 70 and throttle > 60:
+            anomalies.append(0.3)
+        if abs(throttle - brake) < 20 and throttle > 20 and brake > 20:
             anomalies.append(0.4)
-        
+
         return max(anomalies) if anomalies else 0.0
-    
+
     def _calculate_technique_anomaly(self, telemetry_data: Dict[str, Any]) -> float:
         """Calculate technique-specific anomaly score"""
-        # Technique-based anomaly detection
         speed = telemetry_data.get('speed', 0)
         throttle = telemetry_data.get('throttle_pct', 0)
         brake = telemetry_data.get('brake_pct', 0)
         steering = abs(telemetry_data.get('steering_angle', 0))
-        
-        # Corner entry technique anomalies
-        if steering > 0.3:  # In a corner
-            if brake < 10 and speed > 100:  # High speed, no brake
-                return 0.7
-            if throttle > 50 and brake > 30:  # Throttle while braking
+
+        # More sensitive corner entry technique anomalies
+        if steering > 0.2:  # In a corner
+            if brake < 5 and speed > 70:  # High speed, no brake
                 return 0.6
-        
-        # Straight line anomalies
-        if steering < 0.1:  # On straight
-            if brake > 20 and speed > 100:  # Braking on straight
+            if throttle > 30 and brake > 15:  # Throttle while braking
                 return 0.5
-        
+        # More sensitive straight line anomalies
+        if steering < 0.08:  # On straight
+            if brake > 10 and speed > 60:  # Braking on straight
+                return 0.4
         return 0.0
     
     def _record_event(self, event_type: str, event_context: EventContext):
@@ -679,7 +673,6 @@ TRACK STATE:
 - Weather: {event_context.track_state.get('weather', {}).get('weather_type', 'Unknown')}
 
 TIRE & FUEL STATE:
-- Tire Pressures: FL={event_context.tire_fuel_state.get('tire_pressures', {}).get('front_left', 0):.1f}, FR={event_context.tire_fuel_state.get('tire_pressures', {}).get('front_right', 0):.1f}, RL={event_context.tire_fuel_state.get('tire_pressures', {}).get('rear_left', 0):.1f}, RR={event_context.tire_fuel_state.get('tire_pressures', {}).get('rear_right', 0):.1f}
 - Fuel Level: {event_context.tire_fuel_state.get('fuel', {}).get('level_pct', 0):.1f}%
 
 LAP/SECTOR DELTAS:

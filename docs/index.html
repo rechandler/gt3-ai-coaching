@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GT3 AI Coaching - Elevate Your Racing</title>
+  <title>AI Racing Coach for iRacing</title>
   <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f3ce.png">
   <style>
     :root {
@@ -25,7 +25,6 @@
       color: var(--text);
       scroll-behavior: smooth;
     }
-    /* Hero Section */
     .hero {
       min-height: 60vh;
       display: flex;
@@ -79,7 +78,6 @@
       background: var(--accent2);
       transform: translateY(-2px) scale(1.04);
     }
-    /* Features Section */
     .section {
       max-width: 1000px;
       margin: 56px auto;
@@ -131,7 +129,6 @@
       color: var(--accent);
       display: block;
     }
-    /* Carousel */
     .carousel {
       display: flex;
       flex-direction: column;
@@ -187,7 +184,6 @@
     .carousel-dot.active {
       background: var(--accent);
     }
-    /* How It Works */
     .steps {
       display: flex;
       flex-wrap: wrap;
@@ -218,7 +214,6 @@
       color: var(--accent2);
       display: block;
     }
-    /* Download Section */
     .download-area {
       display: flex;
       flex-direction: column;
@@ -265,7 +260,6 @@
       color: #22c55e;
       font-size: 1.2rem;
     }
-    /* Contact Section */
     .contact-icons {
       display: flex;
       gap: 28px;
@@ -290,14 +284,12 @@
       color: #fff;
       transform: scale(1.12);
     }
-    /* Footer */
     footer {
       text-align: center;
       color: #64748b;
       font-size: 1rem;
       margin: 48px 0 24px 0;
     }
-    /* Responsive */
     @media (max-width: 900px) {
       .section { padding: 32px 8px; }
       .features, .steps, .quick-steps { flex-direction: column; gap: 16px; }
@@ -309,8 +301,8 @@
   <!-- Hero Section -->
   <section class="hero">
     <div class="hero-logo">🏎️</div>
-    <div class="hero-title">GT3 AI Coaching</div>
-    <div class="hero-tagline">Elevate your sim racing with real-time AI-powered coaching for Assetto Corsa Competizione.</div>
+    <div class="hero-title">AI Racing Coach for iRacing</div>
+    <div class="hero-tagline">Unlock your potential with real-time AI-powered coaching for iRacing.</div>
     <a href="#download"><button class="cta-btn">Download Now</button></a>
   </section>
 
@@ -331,7 +323,7 @@
       <div class="feature">
         <span class="feature-icon">⚡</span>
         <strong>Easy Setup</strong><br>
-        Simple installation and seamless integration with ACC.
+        Simple installation and seamless integration with iRacing.
       </div>
       <div class="feature">
         <span class="feature-icon">🎛️</span>
@@ -365,7 +357,7 @@
       <div class="step">
         <span class="step-icon">⬇️</span>
         <strong>1. Install</strong><br>
-        Download GT3 AI Coaching and launch Assetto Corsa Competizione.
+        Download the AI Racing Coach and launch iRacing.
       </div>
       <div class="step">
         <span class="step-icon">🏁</span>
@@ -388,7 +380,7 @@
       <div class="quick-steps">
         <div class="quick-step"><span class="quick-step-icon">✔️</span> Download the installer</div>
         <div class="quick-step"><span class="quick-step-icon">✔️</span> Run and follow setup steps</div>
-        <div class="quick-step"><span class="quick-step-icon">✔️</span> Start racing with AI coaching!</div>
+        <div class="quick-step"><span class="quick-step-icon">✔️</span> Start racing with AI coaching in iRacing!</div>
       </div>
       <div style="margin-top:12px;">
         <a href="https://github.com/your-repo/gt3-ai-coaching#readme" target="_blank">Read the full installation guide</a>
@@ -407,7 +399,7 @@
   </section>
 
   <footer>
-    &copy; 2024 GT3 AI Coaching. Not affiliated with Kunos Simulazioni or Assetto Corsa Competizione.
+    &copy; 2024 AI Racing Coach. Not affiliated with iRacing or iRacing.com Motorsport Simulations, LLC.
   </footer>
 
   <script>
@@ -425,7 +417,6 @@
     dots.forEach((dot, i) => {
       dot.addEventListener('click', () => showSlide(i));
     });
-    // Optional: auto-advance
     setInterval(() => {
       showSlide((current + 1) % slides.length);
     }, 5000);

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GT3 AI Coaching - Elevate Your Racing</title>
+  <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f3ce.png">
+  <style>
+    :root {
+      --primary: #1e293b;
+      --accent: #38bdf8;
+      --bg: #f8fafc;
+      --text: #0f172a;
+      --section-bg: #e0e7ef;
+      --radius: 18px;
+    }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    header {
+      background: linear-gradient(90deg, var(--primary) 60%, var(--accent) 100%);
+      color: #fff;
+      padding: 60px 0 40px 0;
+      text-align: center;
+    }
+    header h1 {
+      font-size: 3rem;
+      margin: 0 0 10px 0;
+      letter-spacing: 2px;
+    }
+    header p {
+      font-size: 1.4rem;
+      margin-bottom: 30px;
+    }
+    .cta-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 16px 40px;
+      font-size: 1.2rem;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(30,41,59,0.12);
+      transition: background 0.2s;
+    }
+    .cta-btn:hover {
+      background: #0ea5e9;
+    }
+    section {
+      max-width: 900px;
+      margin: 48px auto;
+      background: var(--section-bg);
+      border-radius: var(--radius);
+      box-shadow: 0 2px 12px rgba(30,41,59,0.07);
+      padding: 40px 32px;
+    }
+    section h2 {
+      margin-top: 0;
+      color: var(--primary);
+      font-size: 2rem;
+    }
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 32px;
+      justify-content: space-between;
+    }
+    .feature {
+      flex: 1 1 250px;
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 24px;
+      margin: 0 0 16px 0;
+      box-shadow: 0 1px 4px rgba(30,41,59,0.06);
+      min-width: 220px;
+    }
+    .screenshots {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .screenshot {
+      width: 260px;
+      height: 160px;
+      background: #cbd5e1;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #64748b;
+      font-size: 1.1rem;
+      font-style: italic;
+      margin-bottom: 12px;
+    }
+    @media (max-width: 700px) {
+      section { padding: 24px 8px; }
+      .features { flex-direction: column; gap: 16px; }
+      .screenshots { flex-direction: column; gap: 12px; }
+    }
+    footer {
+      text-align: center;
+      color: #64748b;
+      font-size: 1rem;
+      margin: 40px 0 20px 0;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>GT3 AI Coaching</h1>
+    <p>Elevate your sim racing with real-time AI-powered coaching for Assetto Corsa Competizione.</p>
+    <a href="#download"><button class="cta-btn">Download Now</button></a>
+  </header>
+
+  <section id="features">
+    <h2>Features</h2>
+    <div class="features">
+      <div class="feature">
+        <strong>Real-Time Feedback</strong><br>
+        Get actionable advice as you drive, just like a pro coach in your ear.
+      </div>
+      <div class="feature">
+        <strong>AI-Powered Insights</strong><br>
+        Advanced analysis of your laps, mistakes, and improvement areas.
+      </div>
+      <div class="feature">
+        <strong>Easy Setup</strong><br>
+        Simple installation and seamless integration with ACC.
+      </div>
+      <div class="feature">
+        <strong>Customizable Coaching</strong><br>
+        Tailor the feedback style and detail to your preferences.
+      </div>
+    </div>
+  </section>
+
+  <section id="screenshots">
+    <h2>Screenshots</h2>
+    <div class="screenshots">
+      <div class="screenshot">[App Overlay Screenshot]</div>
+      <div class="screenshot">[Session Analysis Screenshot]</div>
+      <div class="screenshot">[Settings Panel Screenshot]</div>
+    </div>
+  </section>
+
+  <section id="how-it-works">
+    <h2>How It Works</h2>
+    <ol>
+      <li>Install GT3 AI Coaching and launch Assetto Corsa Competizione.</li>
+      <li>Drive as usual—our AI listens to your telemetry and provides live feedback.</li>
+      <li>Review your performance and get tips for your next session.</li>
+    </ol>
+  </section>
+
+  <section id="download">
+    <h2>Download & Install</h2>
+    <p>
+      <a href="https://github.com/your-repo/gt3-ai-coaching/releases" class="cta-btn">Get the Latest Release</a>
+    </p>
+    <p>Follow the <a href="https://github.com/your-repo/gt3-ai-coaching#readme">installation guide</a> for step-by-step setup instructions.</p>
+  </section>
+
+  <section id="contact">
+    <h2>Contact & Community</h2>
+    <p>
+      <a href="https://github.com/your-repo/gt3-ai-coaching">GitHub</a> |
+      <a href="mailto:your@email.com">Email</a> |
+      <a href="https://discord.gg/your-invite">Discord</a>
+    </p>
+  </section>
+
+  <footer>
+    &copy; 2024 GT3 AI Coaching. Not affiliated with Kunos Simulazioni or Assetto Corsa Competizione.
+  </footer>
+</body>
+</html> 

@@ -468,6 +468,15 @@
     .link-icon {
       font-size: 1.1rem;
     }
+    .link-icon-svg {
+      width: 16px;
+      height: 16px;
+      filter: brightness(0) invert(1);
+      transition: filter var(--transition);
+    }
+    .developer-link:hover .link-icon-svg {
+      filter: brightness(1) invert(0);
+    }
     
     footer {
       text-align: center;
@@ -859,14 +868,16 @@
           <p>My name is Ryann, and I'm the dev behind E3 AI. I'm a full-time software engineer by day, and a sim racer by night. I'm a huge fan of GT3, and I'm always looking for ways to go faster!</p>
           <p>This project represents the intersection of my professional skills and personal passion, fueled by my curiousity to push the limits of useful AI in sim racing, and my desire to build something that can help me and others improve.</p>
           <p>When I'm not coding or racing, you can find me with a guitar in my hands</p>
-          <div class="developer-links">
-            <a href="https://www.linkedin.com/in/ryannchandler" target="_blank" class="developer-link">
-              Connect on LinkedIn
-            </a>
-            <a href="https://ryannchandler.dev" target="_blank" class="developer-link">
-              Visit My Website
-            </a>
-          </div>
+                      <div class="developer-links">
+              <a href="https://www.linkedin.com/in/ryannchandler" target="_blank" class="developer-link">
+                <img src="images/linkedin.svg" alt="LinkedIn" class="link-icon-svg">
+                Connect on LinkedIn
+              </a>
+              <a href="https://ryannchandler.dev" target="_blank" class="developer-link">
+                <span class="link-icon">🌐</span>
+                Visit My Website
+              </a>
+            </div>
         </div>
     </div>
   </section>

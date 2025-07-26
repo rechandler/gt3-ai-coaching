@@ -380,6 +380,51 @@
       color: #fff;
       transform: scale(1.12);
     }
+    
+    /* Developer Section Styles */
+    .developer-content {
+      display: flex;
+      align-items: center;
+      gap: 40px;
+      margin-top: 32px;
+      max-width: 900px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .developer-image {
+      flex-shrink: 0;
+    }
+    .developer-photo {
+      width: 200px;
+      height: 200px;
+      border-radius: 50%;
+      object-fit: cover;
+      box-shadow: var(--shadow);
+      border: 4px solid var(--accent);
+      transition: transform var(--transition);
+    }
+    .developer-photo:hover {
+      transform: scale(1.05);
+    }
+    .developer-info {
+      flex: 1;
+    }
+    .developer-info h3 {
+      color: var(--primary);
+      font-size: 1.5rem;
+      margin-bottom: 16px;
+      font-weight: 600;
+    }
+    .developer-info p {
+      color: var(--text);
+      line-height: 1.6;
+      margin-bottom: 16px;
+      font-size: 1.05rem;
+    }
+    .developer-info p:last-child {
+      margin-bottom: 0;
+    }
+    
     footer {
       text-align: center;
       color: #64748b;
@@ -390,6 +435,15 @@
       .section { padding: 32px 8px; }
       .features, .steps, .quick-steps { flex-direction: column; gap: 16px; }
       .carousel-container { width: 98vw; max-width: 340px; }
+      .developer-content {
+        flex-direction: column;
+        text-align: center;
+        gap: 24px;
+      }
+      .developer-photo {
+        width: 150px;
+        height: 150px;
+      }
     }
     
     /* Mobile-first responsive design */
@@ -745,6 +799,22 @@
       </div>
       <div style="margin-top:12px;">
         <a href="https://github.com/your-repo/gt3-ai-coaching#readme" target="_blank">Read the full installation guide</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- About the Developer -->
+  <section class="section" id="developer">
+    <div class="section-title">About the Developer</div>
+    <div class="developer-content">
+      <div class="developer-image">
+        <img src="images/me.jpg" alt="Developer" class="developer-photo">
+      </div>
+      <div class="developer-info">
+        <h3>Full-Time Software Engineer, Night-Time Sim Racer</h3>
+        <p>Hi! I'm the developer behind this AI Racing Coach project. By day, I work as a full-time software engineer, building and maintaining complex systems. By night, I'm a passionate sim racer, constantly pushing my limits on virtual tracks around the world.</p>
+        <p>This project was born from my love for both technology and racing. I wanted to create something that could help fellow sim racers improve their skills using the power of AI and real-time telemetry analysis.</p>
+        <p>When I'm not coding or racing, you'll find me analyzing lap data, tweaking setups, or sharing racing tips with the community. This project represents the perfect intersection of my professional skills and personal passion.</p>
       </div>
     </div>
   </section>

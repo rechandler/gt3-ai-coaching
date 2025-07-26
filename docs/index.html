@@ -26,7 +26,7 @@
       scroll-behavior: smooth;
     }
     .hero {
-      min-height: 60vh;
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -36,6 +36,71 @@
       text-align: center;
       position: relative;
       overflow: hidden;
+    }
+    .hero-carousel {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+    .hero-slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      transition: opacity 1s ease-in-out;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .hero-slide.active {
+      opacity: 1;
+    }
+    .hero-slide img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: brightness(0.3) contrast(1.1);
+    }
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      background: rgba(30, 41, 59, 0.8);
+      padding: 40px;
+      border-radius: var(--radius);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    .hero-carousel-controls {
+      position: absolute;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      z-index: 3;
+    }
+    .hero-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.3);
+      border: 2px solid rgba(255, 255, 255, 0.6);
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .hero-dot.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      transform: scale(1.2);
+    }
+    .hero-dot:hover {
+      background: rgba(255, 255, 255, 0.5);
+      transform: scale(1.1);
     }
     .hero-logo {
       font-size: 4rem;
@@ -300,10 +365,36 @@
 <body>
   <!-- Hero Section -->
   <section class="hero">
-    <div class="hero-logo">🏎️</div>
-    <div class="hero-title">E3 Sim Racing Coach</div>
-    <div class="hero-tagline">Unlock your potential with real-time AI-powered coaching for iRacing.</div>
-    <a href="#download"><button class="cta-btn">Download Now</button></a>
+    <div class="hero-carousel">
+      <div class="hero-slide active">
+        <img src="images/FIXED_1.png" alt="AI Racing Coach Interface">
+      </div>
+      <div class="hero-slide">
+        <img src="images/INDY_1.png" alt="Racing Analysis Dashboard">
+      </div>
+      <div class="hero-slide">
+        <img src="images/INDY_4.png" alt="Performance Metrics">
+      </div>
+      <div class="hero-slide">
+        <img src="images/SPRINT_3.png" alt="Real-time Coaching">
+      </div>
+      <div class="hero-slide">
+        <img src="images/SPRINT_3A.png" alt="Advanced Analytics">
+      </div>
+    </div>
+    <div class="hero-content">
+      <div class="hero-logo">🏎️</div>
+      <div class="hero-title">E3 Sim Racing Coach</div>
+      <div class="hero-tagline">Unlock your potential with real-time AI-powered coaching for iRacing.</div>
+      <a href="#download"><button class="cta-btn">Download Now</button></a>
+    </div>
+    <div class="hero-carousel-controls">
+      <div class="hero-dot active" data-slide="0"></div>
+      <div class="hero-dot" data-slide="1"></div>
+      <div class="hero-dot" data-slide="2"></div>
+      <div class="hero-dot" data-slide="3"></div>
+      <div class="hero-dot" data-slide="4"></div>
+    </div>
   </section>
 
   <!-- Features Section -->
@@ -403,7 +494,29 @@
   </footer>
 
   <script>
-    // Carousel logic
+    // Hero carousel logic
+    const heroSlides = document.querySelectorAll('.hero-slide');
+    const heroDots = document.querySelectorAll('.hero-dot');
+    let heroCurrent = 0;
+    
+    function showHeroSlide(idx) {
+      heroSlides.forEach((slide, i) => {
+        slide.classList.toggle('active', i === idx);
+        heroDots[i].classList.toggle('active', i === idx);
+      });
+      heroCurrent = idx;
+    }
+    
+    heroDots.forEach((dot, i) => {
+      dot.addEventListener('click', () => showHeroSlide(i));
+    });
+    
+    // Auto-advance hero carousel
+    setInterval(() => {
+      showHeroSlide((heroCurrent + 1) % heroSlides.length);
+    }, 4000);
+    
+    // Screenshots carousel logic
     const slides = document.querySelectorAll('.carousel-slide');
     const dots = document.querySelectorAll('.carousel-dot');
     let current = 0;

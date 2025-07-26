@@ -441,6 +441,33 @@
     .developer-info p:last-child {
       margin-bottom: 0;
     }
+    .developer-links {
+      margin-top: 20px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .developer-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(90deg, var(--accent) 60%, var(--accent2) 100%);
+      color: #fff;
+      text-decoration: none;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-weight: 500;
+      font-size: 1rem;
+      transition: transform var(--transition), box-shadow var(--transition);
+      box-shadow: var(--shadow);
+    }
+    .developer-link:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(30, 41, 59, 0.15);
+    }
+    .link-icon {
+      font-size: 1.1rem;
+    }
     
     footer {
       text-align: center;
@@ -827,12 +854,22 @@
       <div class="developer-image">
         <img src="images/me.jpg" alt="Developer" class="developer-photo">
       </div>
-      <div class="developer-info">
-        <h3>Full-Time Software Engineer, Night-Time Sim Racer</h3>
-        <p>My name is Ryann, and I'm the dev behind E3 AI. I'm a full-time software engineer by day, and a sim racer by night. I'm a huge fan of GT3, and I'm always looking for ways to go faster!</p>
-        <p>This project represents the intersection of my professional skills and personal passion, fueled by my curiousity to push the limits of useful AI in sim racing, and my desire to build something that can help me and others improve.</p>
-        <p>When I'm not coding or racing, you can find me with a guitar in my hands</p>
-      </div>
+              <div class="developer-info">
+          <h3>Full-Time Software Engineer, Night-Time Sim Racer</h3>
+          <p>My name is Ryann, and I'm the dev behind E3 AI. I'm a full-time software engineer by day, and a sim racer by night. I'm a huge fan of GT3, and I'm always looking for ways to go faster!</p>
+          <p>This project represents the intersection of my professional skills and personal passion, fueled by my curiousity to push the limits of useful AI in sim racing, and my desire to build something that can help me and others improve.</p>
+          <p>When I'm not coding or racing, you can find me with a guitar in my hands</p>
+          <div class="developer-links">
+            <a href="https://www.linkedin.com/in/ryannchandler" target="_blank" class="developer-link">
+              <span class="link-icon">💼</span>
+              Connect on LinkedIn
+            </a>
+            <a href="https://ryannchandler.dev" target="_blank" class="developer-link">
+              <span class="link-icon">🌐</span>
+              Visit My Website
+            </a>
+          </div>
+        </div>
     </div>
   </section>
 

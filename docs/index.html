@@ -103,10 +103,18 @@
       transform: scale(1.1);
     }
     .hero-logo {
-      font-size: 4rem;
       margin-bottom: 12px;
       filter: drop-shadow(0 2px 8px rgba(0,0,0,0.12));
       animation: popin 1s cubic-bezier(.4,0,.2,1);
+      display: flex;
+      justify-content: center;
+    }
+    .hero-logo svg {
+      filter: drop-shadow(0 4px 12px rgba(56, 189, 248, 0.3));
+      transition: transform 0.3s ease;
+    }
+    .hero-logo:hover svg {
+      transform: scale(1.1);
     }
     @keyframes popin {
       0% { transform: scale(0.7); opacity: 0; }
@@ -382,9 +390,25 @@
         <img src="images/SPRINT_3A.png" alt="Advanced Analytics">
       </div>
     </div>
-    <div class="hero-content">
-      <!-- <div class="hero-logo">🏎️</div> -->
-      <div class="hero-title">E3 Sim Racing Coach</div>
+          <div class="hero-content">
+        <div class="hero-logo">
+          <svg width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+            <!-- Background circle -->
+            <circle cx="40" cy="40" r="38" fill="none" stroke="var(--accent)" stroke-width="3"/>
+            <!-- E3 text -->
+            <text x="40" y="48" font-family="Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="var(--accent)">E3</text>
+            <!-- Racing elements -->
+            <circle cx="25" cy="25" r="3" fill="var(--accent)" opacity="0.8"/>
+            <circle cx="55" cy="25" r="3" fill="var(--accent)" opacity="0.8"/>
+            <circle cx="25" cy="55" r="3" fill="var(--accent)" opacity="0.8"/>
+            <circle cx="55" cy="55" r="3" fill="var(--accent)" opacity="0.8"/>
+            <!-- Speed lines -->
+            <line x1="15" y1="20" x2="25" y2="20" stroke="var(--accent)" stroke-width="2" opacity="0.6"/>
+            <line x1="15" y1="25" x2="22" y2="25" stroke="var(--accent)" stroke-width="2" opacity="0.6"/>
+            <line x1="15" y1="30" x2="20" y2="30" stroke="var(--accent)" stroke-width="2" opacity="0.6"/>
+          </svg>
+        </div>
+        <div class="hero-title">E3 Sim Racing Coach</div>
       <div class="hero-tagline">Unlock your potential with real-time AI-powered coaching for iRacing.</div>
       <a href="#download"><button class="cta-btn">Download Now</button></a>
     </div>

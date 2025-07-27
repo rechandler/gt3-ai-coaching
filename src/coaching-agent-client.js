@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 const EventEmitter = require('events');
 
-class PythonTelemetryClient extends EventEmitter {
+class CoachingAgentClient extends EventEmitter {
     constructor() {
         super();
         this.ws = null;
@@ -17,7 +17,7 @@ class PythonTelemetryClient extends EventEmitter {
             this.ws = new WebSocket('ws://localhost:8083');
             
             this.ws.on('open', () => {
-                console.log('[GT3] Connected to Python telemetry server');
+                console.log('[GT3] Connected to Coaching Agent server');
                 this.isConnected = true;
                 if (this.reconnectTimer) {
                     clearTimeout(this.reconnectTimer);
@@ -35,7 +35,7 @@ class PythonTelemetryClient extends EventEmitter {
             });
             
             this.ws.on('close', () => {
-                console.log('[GT3] Disconnected from Python telemetry server');
+                console.log('[GT3] Disconnected from Coaching Agent server');
                 this.isConnected = false;
                 this.scheduleReconnect();
             });
@@ -77,7 +77,7 @@ class PythonTelemetryClient extends EventEmitter {
     scheduleReconnect() {
         if (this.reconnectTimer) return;
         
-        console.log('[GT3] Reconnecting to Python server in 5 seconds...');
+        console.log('[GT3] Reconnecting to Coaching Agent server in 5 seconds...');
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
             this.connect();
@@ -96,4 +96,4 @@ class PythonTelemetryClient extends EventEmitter {
     }
 }
 
-module.exports = PythonTelemetryClient;
+module.exports = CoachingAgentClient;

@@ -1,7 +1,7 @@
 // src/telemetry-server.js
 // COMPLETE REPLACEMENT - GT3 AI Coaching Telemetry Server using Python backend
 
-const PythonTelemetryClient = require('./python-telemetry-client');
+const CoachingAgentClient = require('./coaching-agent-client');
 const EventEmitter = require('events');
 
 class EnhancedIRacingTelemetryServer extends EventEmitter {
@@ -9,7 +9,7 @@ class EnhancedIRacingTelemetryServer extends EventEmitter {
         super();
         
         // Replace node-irsdk with Python client
-        this.pythonClient = new PythonTelemetryClient();
+        this.pythonClient = new CoachingAgentClient();
         
         // State management
         this.isConnectedToIRacing = false;
@@ -33,7 +33,7 @@ class EnhancedIRacingTelemetryServer extends EventEmitter {
     
     setupEventHandlers() {
         this.pythonClient.on('Connected', () => {
-            console.log('[GT3 Telemetry] Connected to iRacing via Python server');
+            console.log('[GT3 Telemetry] Connected to iRacing via Coaching Agent server');
             this.isConnectedToIRacing = true;
             this.emit('Connected');
         });
@@ -64,7 +64,7 @@ class EnhancedIRacingTelemetryServer extends EventEmitter {
     }
     
     connectToIRacing() {
-        console.log('[GT3 Telemetry] Connecting to Python telemetry server...');
+        console.log('[GT3 Telemetry] Connecting to Coaching Agent server...');
         this.pythonClient.connect();
     }
     
@@ -101,6 +101,7 @@ class EnhancedIRacingTelemetryServer extends EventEmitter {
             console.error('[Telemetry] Error processing session info:', error);
         }
     }
+    
     processCategorySessionInfo(sessionInfo) {
         // Category-specific car validation (example: can be extended for other categories)
         if (this.currentCar && this.currentTrack && this.currentTrack.category) {
@@ -108,216 +109,169 @@ class EnhancedIRacingTelemetryServer extends EventEmitter {
             this.emit(`${this.currentTrack.category}CarDetected`, this.currentCar);
         }
     }
+    
     processTelemetry(telemetry) {
         try {
-            if (telemetry.PaceFlags !== undefined) {
-                this.processPaceFlags(telemetry.PaceFlags);
-            }
-            if (telemetry.LapCurrentLapTime !== undefined) {
-                this.processLapTimes(telemetry);
-            }
             // Category-specific telemetry processing
             this.processCategoryTelemetry(telemetry);
+            
+            // Shared telemetry processing
+            this.processLapTimes(telemetry);
+            
+            // Analyze telemetry data for coaching insights
+            this.analyzePerformance(telemetry);
+            
         } catch (error) {
             console.error('[Telemetry] Error processing telemetry:', error);
         }
     }
+    
     processCategoryTelemetry(telemetry) {
-        // Category-specific telemetry processing (type-agnostic)
-        // Example: tire/brake/fuel/performance analysis can be made generic or extended per category
-        if (telemetry.TireTemps) {
-            this.analyzeTireTemperatures(telemetry.TireTemps);
+        if (!this.currentTrack) return;
+        
+        const category = this.currentTrack.category.toLowerCase();
+        
+        // Example: GT3 specific processing
+        if (category.includes('gt3')) {
+            if (telemetry.TireTemp) {
+                this.analyzeTireTemperatures(telemetry.TireTemp);
+            }
+            if (telemetry.BrakeTemp) {
+                this.analyzeBrakeTemperatures(telemetry.BrakeTemp);
+            }
+            if (telemetry.FuelLevel) {
+                this.analyzeFuelStrategy(telemetry);
+            }
         }
-        if (telemetry.BrakePressures) {
-            this.analyzeBrakeTemperatures(telemetry.BrakePressures);
-        }
-        if (telemetry.FuelLevel !== undefined && telemetry.FuelUsePerHour !== undefined) {
-            this.analyzeFuelStrategy(telemetry);
-        }
-        if (telemetry.Speed !== undefined && telemetry.RPM !== undefined) {
-            this.analyzePerformance(telemetry);
-        }
-        // Emit processed category data
-        const category = this.currentTrack?.category || 'Unknown';
-        this.emit(`${category}Telemetry`, {
-            car: this.currentCar,
-            track: this.currentTrack,
-            telemetry: telemetry,
-            analysis: this.getCategoryAnalysis(telemetry)
-        });
+        
+        // Pass telemetry to category-specific analysis
+        this.emit('CategoryTelemetry', { category, telemetry });
     }
+    
     processPaceFlags(paceFlags) {
-        // Handle pace flags - no converter issues with Python backend!
-        if (paceFlags & 0x00000001) { // EndOfLine
-            this.emit('PaceFlag', 'EndOfLine');
+        const flagMap = {
+            1: 'checkered',
+            2: 'white',
+            4: 'green',
+            8: 'yellow',
+            16: 'red',
+            32: 'blue',
+            64: 'debris',
+            128: 'crossed',
+            256: 'furled'
+        };
+        
+        const activeFlags = [];
+        for (const flag in flagMap) {
+            if (paceFlags & flag) {
+                activeFlags.push(flagMap[flag]);
+            }
         }
-        if (paceFlags & 0x00000002) { // FreePass
-            this.emit('PaceFlag', 'FreePass');
-        }
-        if (paceFlags & 0x00000004) { // WavedAround
-            this.emit('PaceFlag', 'WavedAround');
-        }
-        if (paceFlags & 0x00000200) { // Caution
-            this.emit('PaceFlag', 'Caution');
-        }
-        if (paceFlags & 0x00002000) { // Green
-            this.emit('PaceFlag', 'Green');
-        }
-        if (paceFlags & 0x00004000) { // Yellow
-            this.emit('PaceFlag', 'Yellow');
-        }
-        if (paceFlags & 0x00008000) { // Red
-            this.emit('PaceFlag', 'Red');
+        
+        if (activeFlags.length > 0) {
+            this.emit('PaceFlags', activeFlags);
         }
     }
     
     processLapTimes(telemetry) {
-        // Track lap time improvements
-        if (telemetry.LapLastLapTime && telemetry.LapLastLapTime > 0) {
-            if (!this.lastLapTime || telemetry.LapLastLapTime !== this.lastLapTime) {
-                this.lastLapTime = telemetry.LapLastLapTime;
-                console.log(`[GT3 Telemetry] Lap completed: ${this.formatTime(this.lastLapTime)}`);
-                this.emit('LapCompleted', this.lastLapTime);
-            }
-        }
-        
-        if (telemetry.LapBestLapTime && telemetry.LapBestLapTime > 0) {
-            if (!this.bestLapTime || telemetry.LapBestLapTime !== this.bestLapTime) {
-                this.bestLapTime = telemetry.LapBestLapTime;
-                console.log(`[GT3 Telemetry] New best lap: ${this.formatTime(this.bestLapTime)}`);
+        if (telemetry.LapLastLapTime && telemetry.LapLastLapTime !== this.lastLapTime) {
+            this.lastLapTime = telemetry.LapLastLapTime;
+            this.emit('LapCompleted', this.lastLapTime);
+            
+            if (!this.bestLapTime || this.lastLapTime < this.bestLapTime) {
+                this.bestLapTime = this.lastLapTime;
                 this.emit('BestLap', this.bestLapTime);
             }
         }
     }
     
     analyzeTireTemperatures(tireTemps) {
-        // GT3 tire temperature analysis
-        const analysis = {
-            optimal: true,
-            warnings: []
+        const warnings = [];
+        const thresholds = {
+            cold: 70,  // C
+            hot: 110 // C
         };
         
-        // Check for overheating (GT3 optimal range: 80-100°C)
-        Object.entries(tireTemps).forEach(([tire, temp]) => {
-            if (temp > 100) {
-                analysis.optimal = false;
-                analysis.warnings.push(`${tire} overheating: ${temp.toFixed(1)}°C`);
-            } else if (temp < 80) {
-                analysis.optimal = false;
-                analysis.warnings.push(`${tire} too cold: ${temp.toFixed(1)}°C`);
+        const tirePositions = ['LF', 'RF', 'LR', 'RR'];
+        for (const pos of tirePositions) {
+            const temp = tireTemps[pos];
+            if (temp < thresholds.cold) {
+                warnings.push(`${pos} tires are cold (${temp.toFixed(1)}°C)`);
+            } else if (temp > thresholds.hot) {
+                warnings.push(`${pos} tires are overheating (${temp.toFixed(1)}°C)`);
             }
-        });
+        }
         
-        if (analysis.warnings.length > 0) {
-            this.emit('TireWarning', analysis);
+        if (warnings.length > 0) {
+            this.emit('TireWarning', { type: 'temperature', warnings });
         }
     }
     
     analyzeBrakeTemperatures(brakePressures) {
-        // GT3 brake analysis
-        const maxPressure = Math.max(...Object.values(brakePressures));
-        const minPressure = Math.min(...Object.values(brakePressures));
+        const warnings = [];
+        const pressureThreshold = 0.9; // 90% brake pressure
         
-        if (maxPressure > 800) { // High brake pressure threshold
-            this.emit('BrakeWarning', {
-                type: 'HighPressure',
-                maxPressure: maxPressure,
-                message: 'High brake pressure detected'
-            });
+        // Assuming brake pressures are an array [LF, RF, LR, RR]
+        const [lf, rf, lr, rr] = brakePressures;
+        
+        if (lf > pressureThreshold || rf > pressureThreshold) {
+            warnings.push('High brake pressure detected, risk of lock-up');
         }
         
-        // Check for brake balance issues
-        const frontAvg = (brakePressures.LFbrakeLinePress + brakePressures.RFbrakeLinePress) / 2;
-        const rearAvg = (brakePressures.LRbrakeLinePress + brakePressures.RRbrakeLinePress) / 2;
-        
-        if (frontAvg > 0 && rearAvg > 0) {
-            const balance = frontAvg / (frontAvg + rearAvg);
-            if (balance < 0.55 || balance > 0.75) {
-                this.emit('BrakeWarning', {
-                    type: 'Balance',
-                    balance: balance,
-                    message: `Brake balance: ${(balance * 100).toFixed(1)}% front`
-                });
-            }
+        if (warnings.length > 0) {
+            this.emit('BrakeWarning', { type: 'pressure', warnings });
         }
     }
     
     analyzeFuelStrategy(telemetry) {
-        // GT3 fuel strategy analysis
         const fuelLevel = telemetry.FuelLevel;
-        const fuelUseRate = telemetry.FuelUsePerHour;
+        const fuelRemaining = telemetry.FuelLapsRemaining;
+        const sessionLaps = telemetry.SessionLaps;
+        const sessionTime = telemetry.SessionTime;
         
-        if (fuelLevel < 10) { // Low fuel warning
-            this.emit('FuelWarning', {
-                type: 'LowFuel',
-                level: fuelLevel,
-                message: `Low fuel: ${fuelLevel.toFixed(1)}L remaining`
-            });
+        const warnings = [];
+        
+        if (fuelRemaining < 2) {
+            warnings.push(`Low fuel: ${fuelRemaining.toFixed(1)} laps remaining`);
         }
         
-        // Calculate laps remaining
-        if (fuelUseRate > 0 && telemetry.LapLastLapTime > 0) {
-            const lapsPerHour = 3600 / telemetry.LapLastLapTime;
-            const fuelPerLap = fuelUseRate / lapsPerHour;
-            const lapsRemaining = Math.floor(fuelLevel / fuelPerLap);
-            
-            this.emit('FuelStrategy', {
-                fuelLevel: fuelLevel,
-                fuelPerLap: fuelPerLap,
-                lapsRemaining: lapsRemaining
-            });
+        // Example: check if fuel will last the session
+        if (sessionLaps > 0 && fuelRemaining < sessionLaps) {
+            warnings.push('Fuel will not last the session');
+        }
+        
+        if (warnings.length > 0) {
+            this.emit('FuelWarning', { type: 'level', warnings });
         }
     }
     
     analyzePerformance(telemetry) {
-        // GT3 performance analysis
-        const performance = {
-            speed: telemetry.Speed,
-            rpm: telemetry.RPM,
-            gear: telemetry.Gear,
-            throttle: telemetry.Throttle,
-            brake: telemetry.Brake,
-            steering: telemetry.Steering
+        // Example: analyze speed and gear usage
+        const speed = telemetry.Speed;
+        const gear = telemetry.Gear;
+        const rpm = telemetry.RPM;
+        
+        const analysis = {
+            speed: speed,
+            gear: gear,
+            rpm: rpm
         };
         
-        // Analyze driving style
-        if (telemetry.Throttle > 0.95 && telemetry.Brake > 0.1) {
-            this.emit('DrivingWarning', {
-                type: 'ThrottleBrake',
-                message: 'Throttle and brake applied simultaneously'
-            });
-        }
-        
-        this.emit('PerformanceData', performance);
+        this.emit('PerformanceUpdate', analysis);
     }
     
     getCategoryAnalysis(telemetry) {
-        // Generic analysis (can be extended per category)
-        return {
-            timestamp: Date.now(),
-            car: this.currentCar?.name,
-            track: this.currentTrack?.name,
-            lapTime: telemetry.LapCurrentLapTime,
-            speed: telemetry.Speed,
-            rpm: telemetry.RPM,
-            gear: telemetry.Gear,
-            fuelLevel: telemetry.FuelLevel,
-            tireTemps: telemetry.TireTemps,
-            brakes: telemetry.BrakePressures,
-            flags: {
-                session: telemetry.SessionFlags,
-                pace: telemetry.PaceFlags
-            }
-        };
+        // This function would contain more detailed, category-specific analysis
+        // For example, IndyCar vs. GT3 specific logic
+        return {};
     }
     
     formatTime(seconds) {
-        const mins = Math.floor(seconds / 60);
+        const minutes = Math.floor(seconds / 60);
         const secs = (seconds % 60).toFixed(3);
-        return `${mins}:${secs.padStart(6, '0')}`;
+        return `${minutes}:${secs.padStart(6, '0')}`;
     }
     
-    // Compatibility methods for existing code
     get sessionInfo() {
         return this.currentSessionInfo;
     }
@@ -330,24 +284,22 @@ class EnhancedIRacingTelemetryServer extends EventEmitter {
         return this.isConnectedToIRacing;
     }
     
-    // Method to get current car info
+    // Additional getters for easy access
     getCurrentCar() {
         return this.currentCar;
     }
     
-    // Method to get current track info
     getCurrentTrack() {
         return this.currentTrack;
     }
     
-    // Method to disconnect
     disconnect() {
-        console.log('[GT3 Telemetry] Disconnecting...');
-        this.pythonClient.disconnect();
+        if (this.pythonClient) {
+            this.pythonClient.disconnect();
+        }
     }
 }
 
-// Export the enhanced telemetry server
 module.exports = EnhancedIRacingTelemetryServer;
 
 // If running directly (for testing)
